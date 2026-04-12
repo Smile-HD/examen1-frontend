@@ -1,0 +1,108 @@
+<!-- Contenedor principal de la grilla del panel (Dashboard) -->
+<div class="dashboard-layout">
+  
+  <!-- BARRA LATERAL (Sidebar): Contiene el nombre del taller y de la navegación principal -->
+  <aside class="sidebar">
+    <!-- Cabecera del Sidebar con el branding -->
+    <div class="sidebar-header">
+      <h2>AutoAsistencia</h2>
+    </div>
+    
+    <!-- Enlaces de navegación simulados del panel -->
+    <nav class="sidebar-nav">
+      <!-- Enlace Activo -> Panel principal donde estamos actualmente -->
+      <a class="active">INICIO</a>
+      
+      <!-- Estos enlaces son visuales por ahora y no tienen funcionalidad (simulan otras vistas) -->
+      <a>SOLICITUDES</a>
+      <a>MIS TÉCNICOS</a>
+      <a>HISTORIAL</a>
+    </nav>
+    
+    <!-- Pie del sidebar, utilizado comúnmente para acciones como cerrar sesión -->
+    <div class="sidebar-footer">
+      <button (click)="logout()" class="btn-logout">Cerrar Sesión</button>
+    </div>
+  </aside>
+
+  <!-- ÁREA CENTRAL DE CONTENIDO: Contiene los datos, estadísticas y tareas -->
+  <main class="main-content">
+    
+    <!-- Cabecera de bienvenida personalizada dinámica -->
+    <header class="content-header">
+      <div class="welcome-text">
+        <h1>Bienvenido, {{ tallerNombre }}</h1>
+        <p>Aquí tienes un resumen actualizado de las operaciones de tu taller.</p>
+      </div>
+    </header>
+
+    <!-- TARJETAS DE MÉTRICAS RÁPIDAS (KPIs): Muestran de un vistazo la carga de trabajo -->
+    <section class="metrics-grid">
+      <!-- Métrica: Solicitudes pendientes de asignación -->
+      <div class="metric-card">
+        <h3>Solicitudes Pendientes</h3>
+        <div class="value alert-text">5</div>
+      </div>
+      
+      <!-- Métrica: Vehículos actualmente siendo reparados o en ruta -->
+      <div class="metric-card">
+        <h3>En Proceso</h3>
+        <div class="value warn-text">2</div>
+      </div>
+      
+      <!-- Métrica: Trabajo que ya ha sido completado con éxito -->
+      <div class="metric-card">
+        <h3>Servicios Completados</h3>
+        <div class="value success-text">38</div>
+      </div>
+    </section>
+
+    <!-- SOLICITUDES RECIENTES: Lista de las alertas de emergencia entrantes -->
+    <section class="recent-requests">
+      <h2>Emergencias Recientes</h2>
+      <div class="request-list">
+        
+        <!-- Elemento de Solicitud de Emergencia 1 (Generado manualmente como prueba según contexto.md) -->
+        <div class="request-item">
+          <div class="request-info">
+            <span class="badge priority-high">Alta Prioridad</span>
+            <h4>Choque Leve - Toyota Corolla</h4>
+            <p>Ubicación: Av. Principal y Calle 4</p>
+          </div>
+          <div class="request-actions">
+            <!-- Botones simulados de aceptación y rechazo del servicio -->
+            <button class="btn-accept">Aceptar</button>
+            <button class="btn-reject">Rechazar</button>
+          </div>
+        </div>
+
+        <!-- Elemento de Solicitud de Emergencia 2 -->
+        <div class="request-item">
+          <div class="request-info">
+            <span class="badge priority-medium">Media Prioridad</span>
+            <h4>Desperfecto de Batería - Honda Civic</h4>
+            <p>Ubicación: Estacionamiento Centro Comercial Sur</p>
+          </div>
+          <div class="request-actions">
+            <button class="btn-accept">Aceptar</button>
+            <button class="btn-reject">Rechazar</button>
+          </div>
+        </div>
+
+        <!-- Elemento de Solicitud de Emergencia 3 (Pinchazo de Llanta) -->
+        <div class="request-item">
+          <div class="request-info">
+            <span class="badge priority-low">Baja Prioridad</span>
+            <h4>Pinchazo de Llanta - Hyundai Tucson</h4>
+            <p>Ubicación: Av. Banzer 4to Anillo</p>
+          </div>
+          <div class="request-actions">
+            <button class="btn-accept">Aceptar</button>
+            <button class="btn-reject">Rechazar</button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+</div>
