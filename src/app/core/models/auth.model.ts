@@ -3,7 +3,7 @@ export interface RegisterRequest {
   correo: string;
   password: string;
   telefono?: string;
-  tipo_usuario: 'cliente' | 'taller';
+  tipo_usuario: 'cliente' | 'taller' | 'tecnico' | 'empleado';
   nombre_taller?: string;
   ubicacion_taller?: string;
 }

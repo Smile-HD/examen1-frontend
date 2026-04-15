@@ -10,18 +10,15 @@
     
     <!-- Enlaces de navegación simulados del panel -->
     <nav class="sidebar-nav">
-      <!-- Enlace Activo -> Panel principal donde estamos actualmente -->
-      <a class="active">INICIO</a>
-      
-      <!-- Estos enlaces son visuales por ahora y no tienen funcionalidad (simulan otras vistas) -->
-      <a>SOLICITUDES</a>
-      <a>MIS TÉCNICOS</a>
-      <a>HISTORIAL</a>
+      <a [class.active]="currentTab === 'inicio'" [class.disabled]="isAnyActionInProgress" (click)="setTab('inicio')">INICIO</a>
+      <a [class.active]="currentTab === 'vehiculos'" [class.disabled]="isAnyActionInProgress" (click)="setTab('vehiculos')">MIS VEHÍCULOS</a>
+      <a [class.active]="currentTab === 'tecnicos'" [class.disabled]="isAnyActionInProgress" (click)="setTab('tecnicos')">MIS TÉCNICOS</a>
+      <a [class.active]="currentTab === 'historial'" [class.disabled]="isAnyActionInProgress" (click)="setTab('historial')">HISTORIAL</a>
     </nav>
     
     <!-- Pie del sidebar, utilizado comúnmente para acciones como cerrar sesión -->
     <div class="sidebar-footer">
-      <button (click)="logout()" class="btn-logout">Cerrar Sesión</button>
+      <button (click)="logout()" class="btn-logout" [disabled]="isAnyActionInProgress">Cerrar Sesión</button>
     </div>
   </aside>
 
@@ -30,79 +27,314 @@
     
     <!-- Cabecera de bienvenida personalizada dinámica -->
     <header class="content-header">
-      <div class="welcome-text">
+      <div class="welcome-text" *ngIf="currentTab === 'inicio'">
         <h1>Bienvenido, {{ tallerNombre }}</h1>
         <p>Aquí tienes un resumen actualizado de las operaciones de tu taller.</p>
       </div>
+      <div class="welcome-text" *ngIf="currentTab === 'tecnicos'">
+        <h1>Mis Técnicos</h1>
+        <p>Gestiona a tus técnicos y visualiza su ubicación en tiempo real.</p>
+      </div>
+      <div class="welcome-text" *ngIf="currentTab === 'vehiculos'">
+        <h1>Mis Vehículos</h1>
+        <p>Registra y administra tus unidades de servicio.</p>
+      </div>
+      <div class="welcome-text" *ngIf="currentTab === 'historial'">
+        <h1>Historial de Incidentes</h1>
+        <p>Revisa los incidentes a los que tu taller fue solicitado y atendió.</p>
+      </div>
     </header>
 
-    <!-- TARJETAS DE MÉTRICAS RÁPIDAS (KPIs): Muestran de un vistazo la carga de trabajo -->
-    <section class="metrics-grid">
-      <!-- Métrica: Solicitudes pendientes de asignación -->
-      <div class="metric-card">
-        <h3>Solicitudes Pendientes</h3>
-        <div class="value alert-text">5</div>
-      </div>
-      
-      <!-- Métrica: Vehículos actualmente siendo reparados o en ruta -->
-      <div class="metric-card">
-        <h3>En Proceso</h3>
-        <div class="value warn-text">2</div>
-      </div>
-      
-      <!-- Métrica: Trabajo que ya ha sido completado con éxito -->
-      <div class="metric-card">
-        <h3>Servicios Completados</h3>
-        <div class="value success-text">38</div>
-      </div>
-    </section>
+    <ng-container *ngIf="currentTab === 'inicio'">
+      <!-- TARJETAS DE MÉTRICAS RÁPIDAS (KPIs) -->
+      <section class="metrics-grid">
+        <!-- Métrica: Solicitudes pendientes de asignación -->
+        <div class="metric-card">
+          <h3>Solicitudes Pendientes</h3>
+          <div class="value alert-text">{{ solicitudesEntrantes.length }}</div>
+        </div>
+      </section>
 
-    <!-- SOLICITUDES RECIENTES: Lista de las alertas de emergencia entrantes -->
-    <section class="recent-requests">
-      <h2>Emergencias Recientes</h2>
-      <div class="request-list">
+      <!-- SOLICITUDES RECIENTES -->
+      <section class="recent-requests">
+        <h2>Notificaciones - Solicitudes de Emergencias</h2>
+
+        <div *ngIf="incomingNotice" class="empty-box" style="margin-bottom: 12px; border-color: #38a169; color: #276749;">
+          {{ incomingNotice }}
+        </div>
         
-        <!-- Elemento de Solicitud de Emergencia 1 (Generado manualmente como prueba según contexto.md) -->
-        <div class="request-item">
-          <div class="request-info">
-            <span class="badge priority-high">Alta Prioridad</span>
-            <h4>Choque Leve - Toyota Corolla</h4>
-            <p>Ubicación: Av. Principal y Calle 4</p>
+        <div *ngIf="errorMessage" class="error-box">
+          {{ errorMessage }}
+        </div>
+
+        <div *ngIf="solicitudesEntrantes.length === 0 && !errorMessage" class="empty-box">
+          No tienes solicitudes pendientes en este momento.
+        </div>
+
+        <div class="request-list">
+          <div class="request-item" *ngFor="let request of solicitudesEntrantes">
+            <div class="request-info">
+              <span class="badge priority-high" *ngIf="request.prioridad >= 5">Alta Prioridad</span>
+              <span class="badge priority-medium" *ngIf="request.prioridad >= 2 && request.prioridad < 5">Media Prioridad</span>
+              <span class="badge priority-low" *ngIf="request.prioridad < 2">Baja Prioridad</span>
+              
+              <h4>{{ request.tipo_problema }} - {{ request.vehiculo_marca }} {{ request.vehiculo_modelo }}</h4>
+              <p><strong>Vehículo:</strong> {{ request.vehiculo_placa }} ({{ request.vehiculo_anio }})</p>
+              <p><strong>Ubicación aproximada:</strong> {{ request.ubicacion || 'Lat: ' + request.latitud + ', Lng: ' + request.longitud }}</p>
+              <p><strong>Estado:</strong> {{ request.estado_solicitud }}</p>
+            </div>
+            <div class="request-actions">
+              <button *ngIf="canRespondRequest(request.estado_solicitud)" (click)="openDetails(request)" class="btn-accept" [disabled]="isAnyActionInProgress">Ver y Responder</button>
+              <span *ngIf="!canRespondRequest(request.estado_solicitud)">{{ request.estado_solicitud }}</span>
+            </div>
           </div>
-          <div class="request-actions">
-            <!-- Botones simulados de aceptación y rechazo del servicio -->
-            <button class="btn-accept">Aceptar</button>
-            <button class="btn-reject">Rechazar</button>
+        </div>
+      </section>
+    </ng-container>
+
+    <!-- Pestaña de Vehículos -->
+    <ng-container *ngIf="currentTab === 'vehiculos'">
+      <section class="technicians-section">
+        <div class="add-technician-panel" style="margin-bottom: 2rem; padding: 1rem; border: 1px solid #ddd; border-radius: 8px; background: white;">
+          <h3>Registrar Transporte del Taller</h3>
+          <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; margin-top: 10px; margin-bottom: 10px;">
+            <select [(ngModel)]="newVehicleType" name="transportType" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px;" [disabled]="isVehicleActionInProgress">
+              <option *ngFor="let option of transportTypeOptions" [ngValue]="option">{{ formatVehicleType(option) }}</option>
+            </select>
+            <input type="text" [(ngModel)]="newVehiclePlate" name="transportPlate" maxlength="10" placeholder="Placa (ej. ABC123)" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px;" [disabled]="isVehicleActionInProgress">
+            <button class="btn-primary" (click)="registerWorkshopVehicle()" [disabled]="isVehicleActionInProgress">
+              {{ isRegisteringVehicle ? 'Registrando...' : 'Registrar' }}
+            </button>
+          </div>
+          <div *ngIf="vehicleFormError" class="error-box" style="margin-top: 10px;">{{ vehicleFormError }}</div>
+          <div *ngIf="vehicleFormSuccess" class="empty-box" style="margin-top: 10px; border-color: #38a169; color: #276749;">{{ vehicleFormSuccess }}</div>
+
+          <div style="margin-top: 12px;" *ngIf="workshopVehicles.length > 0">
+            <strong>Transportes registrados:</strong>
+            <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
+              <div *ngFor="let veh of workshopVehicles" style="border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; background: #f8fafc;">
+                <ng-container *ngIf="editingVehicleId !== veh.id; else editVehicleRow">
+                  <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <span>{{ getVehicleLabel(veh) }} - Estado: {{ veh.estado }}</span>
+                    <div style="display: flex; gap: 8px;">
+                      <button class="btn-primary" style="padding: 6px 10px;" (click)="startVehicleEdit(veh)" [disabled]="isVehicleActionInProgress">Editar</button>
+                      <button class="btn-danger" style="padding: 6px 10px;" (click)="deleteWorkshopVehicle(veh)" [disabled]="isVehicleActionInProgress">
+                        {{ deletingVehicleId === veh.id ? 'Eliminando...' : 'Eliminar' }}
+                      </button>
+                    </div>
+                  </div>
+                </ng-container>
+
+                <ng-template #editVehicleRow>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 8px; align-items: center;">
+                    <select [(ngModel)]="editVehicleType" name="editTransportType" [disabled]="isVehicleActionInProgress">
+                      <option *ngFor="let option of transportTypeOptions" [ngValue]="option">{{ formatVehicleType(option) }}</option>
+                    </select>
+                    <input type="text" [(ngModel)]="editVehiclePlate" name="editTransportPlate" maxlength="10" placeholder="Placa" style="padding: 8px; border: 1px solid #cbd5e0; border-radius: 4px;" [disabled]="isVehicleActionInProgress">
+                    <button class="btn-primary" style="padding: 6px 10px;" (click)="saveVehicleEdit(veh.id)" [disabled]="isVehicleActionInProgress">
+                      {{ isUpdatingVehicle ? 'Guardando...' : 'Guardar' }}
+                    </button>
+                    <button class="btn-secondary" style="padding: 6px 10px;" (click)="cancelVehicleEdit()" [disabled]="isVehicleActionInProgress">Cancelar</button>
+                  </div>
+                </ng-template>
+              </div>
+            </div>
+          </div>
+          <div *ngIf="workshopVehicles.length === 0" class="empty-box" style="margin-top: 12px;">
+            Aun no registraste transportes para tu taller.
+          </div>
+        </div>
+      </section>
+    </ng-container>
+
+    <!-- Pestaña de Técnicos -->
+    <ng-container *ngIf="currentTab === 'tecnicos'">
+      <section class="technicians-section">
+        <!-- Panel para buscar y agregar tecnicos -->
+        <div class="add-technician-panel" style="margin-bottom: 2rem; padding: 1rem; border: 1px solid #ddd; border-radius: 8px; background: white;">
+          <h3>Agregar Nuevo Tecnico</h3>
+          <div style="display: flex; gap: 10px; margin-top: 10px; margin-bottom: 10px;">
+            <input type="text" [(ngModel)]="searchTecnicoQuery" placeholder="Nombre completo o parcial..." style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;" [disabled]="isTechnicianActionInProgress">
+            <button class="btn-primary" (click)="buscarTecnicos()" [disabled]="isTechnicianActionInProgress">
+              {{ isSearchingTechnicians ? 'Buscando...' : 'Buscar' }}
+            </button>
+          </div>
+          <div *ngIf="searchTecnicoSuccess" class="empty-box" style="margin-top: 10px; border-color: #38a169; color: #276749;">{{ searchTecnicoSuccess }}</div>
+          <div *ngIf="searchTecnicoError" class="error-box" style="margin-top: 10px;">{{ searchTecnicoError }}</div>
+          <div class="search-results" *ngIf="foundTecnicos.length > 0">
+            <div *ngFor="let cand of foundTecnicos" style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f1f5f9; margin-bottom: 5px; border-radius: 4px;">
+              <span><strong>{{ cand.nombre }}</strong> ({{ cand.correo }})</span>
+              <button class="btn-accept" (click)="asignarTecnico(cand.usuario_id)" [disabled]="isTechnicianActionInProgress">
+                {{ assigningTecnicoId === cand.usuario_id ? 'Agregando...' : 'Anadir a mi Taller' }}
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <h3>Mis Tecnicos Actuales</h3>
+        <div *ngIf="tecnicosError" class="error-box">{{ tecnicosError }}</div>
+        <div *ngIf="tecnicos.length === 0 && !tecnicosError" class="empty-box" style="margin-bottom: 12px;">
+          Aun no tienes tecnicos vinculados. Busca por nombre y usa "Anadir a mi Taller".
+        </div>
+        
+        <div class="technician-list">
+          <div class="technician-item" *ngFor="let tec of tecnicos">
+            <div class="technician-info">
+              <h4>{{ tec.nombre }}</h4>
+              <p><strong>Estado:</strong> {{ tec.estado_tecnico }}</p>
+              
+              <!-- Mostrar ubicación si disponible en memoria -->
+              <div *ngIf="getLocationFor(tec.usuario_id) as ubic; else noUbic">
+                <p><strong>Ubicación Activa:</strong> Lat: {{ ubic.latitud | number:'1.2-4' }}, Lng: {{ ubic.longitud | number:'1.2-4' }}</p>
+                <small>Última act: {{ ubic.ultima_actualizacion_gps | date:'short' }}</small>
+              </div>
+              <ng-template #noUbic>
+                <p><strong>Ubicación:</strong> <em>No está compartiendo ubicación</em></p>
+              </ng-template>
+            </div>
+            <div class="technician-actions">
+              <button class="btn-danger" (click)="desvincularTecnico(tec.usuario_id)" [disabled]="isTechnicianActionInProgress">
+                {{ unassigningTecnicoId === tec.usuario_id ? 'Desvinculando...' : 'Desvincular' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </ng-container>
+
+    <!-- Pestaña de Historial -->
+    <ng-container *ngIf="currentTab === 'historial'">
+      <section class="history-section">
+        <div *ngIf="historialError" class="error-box">{{ historialError }}</div>
+        
+        <div *ngIf="historial.length === 0 && !historialError" class="empty-box">
+          Tu historial está vacío. Aún no has atendido incidentes finalizados.
+        </div>
+
+        <div class="history-list">
+          <div class="history-item" *ngFor="let item of historial">
+            <div class="history-info">
+              <h4>Incidente #{{ item.incidente_id }} - {{ item.tipo_problema }}</h4>
+              <p><strong>Fecha del incidente:</strong> {{ item.fecha_incidente | date:'medium' }}</p>
+              <p><strong>Vehículo:</strong> {{ item.vehiculo_marca }} {{ item.vehiculo_modelo }} ({{ item.vehiculo_placa }})</p>
+              <p><strong>Cliente:</strong> {{ item.cliente_nombre }} (Tel: {{ item.cliente_telefono || 'N/A' }})</p>
+              <p><strong>Estado Actual Incidente:</strong> <span class="badge state-badge">{{ item.estado_actual }}</span></p>
+            </div>
+            <div class="history-metrics" *ngIf="item.monto_total || item.calificacion_promedio">
+               <p *ngIf="item.monto_total"><strong>Ingreso:</strong> ${{ item.monto_total }}</p>
+               <p *ngIf="item.calificacion_promedio"><strong>Valoración Promedio:</strong> {{ item.calificacion_promedio | number:'1.1-1' }} ⭐</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </ng-container>
+
+  </main>
+</div>
+
+<!-- Modal para ver el detalle de la solicitud y asignar el servicio -->
+<div class="modal-overlay" *ngIf="showModal" (click)="closeModal()">
+  <div class="modal-content" (click)="$event.stopPropagation()">
+    
+    <div class="modal-header">
+      <h2>Detalles de Emergencia</h2>
+      <button class="close-icon" (click)="closeModal()" [disabled]="isRequestDecisionInProgress">×</button>
+    </div>
+
+    <div class="modal-body" *ngIf="selectedRequest">
+      <div class="incident-info">
+        <h3>Información del Incidente</h3>
+        <p><strong>Tipo:</strong> {{ selectedRequest.tipo_problema }} (Prioridad {{ selectedRequest.prioridad }})</p>
+        <p><strong>Vehículo:</strong> {{ selectedRequest.vehiculo_marca }} {{ selectedRequest.vehiculo_modelo }} - Placa: {{ selectedRequest.vehiculo_placa }}</p>
+        <p><strong>Ubicación:</strong> {{ selectedRequest.ubicacion || 'Sin descripción' }}</p>
+
+        <div *ngIf="hasSelectedRequestCoordinates; else noMapCoordinates" style="margin-top: 12px;">
+          <div id="incident-map" style="height: 220px; width: 100%; border: 1px solid #cbd5e0; border-radius: 10px; overflow: hidden;"></div>
+        </div>
+        <ng-template #noMapCoordinates>
+          <div class="empty-box" style="margin-top: 12px;">
+            No hay coordenadas válidas para mostrar el mapa de esta solicitud.
+          </div>
+        </ng-template>
+      </div>
+
+      <div class="evidences-section">
+        <h3>Evidencia Recibida</h3>
+        
+        <!-- Imágenes -->
+        <h4 *ngIf="getImages(selectedRequest).length > 0">Imágenes adjuntas:</h4>
+        <div class="images-list">
+          <div class="evidence-item" *ngFor="let img of getImages(selectedRequest)">
+             <a *ngIf="img.url" [href]="img.url" target="_blank">{{ img.url }}</a>
+             <img *ngIf="img.url" [src]="img.url" alt="Evidencia en imagen" style="max-width: 100px; max-height: 100px;" />
           </div>
         </div>
 
-        <!-- Elemento de Solicitud de Emergencia 2 -->
-        <div class="request-item">
-          <div class="request-info">
-            <span class="badge priority-medium">Media Prioridad</span>
-            <h4>Desperfecto de Batería - Honda Civic</h4>
-            <p>Ubicación: Estacionamiento Centro Comercial Sur</p>
-          </div>
-          <div class="request-actions">
-            <button class="btn-accept">Aceptar</button>
-            <button class="btn-reject">Rechazar</button>
+        <!-- Audios Transcritos -->
+        <h4 *ngIf="getAudios(selectedRequest).length > 0">Transcripción de Audios:</h4>
+        <div class="audios-list">
+          <div class="evidence-item text-box" *ngFor="let audio of getAudios(selectedRequest)">
+            <p><em>Url original:</em> <a *ngIf="audio.url" [href]="audio.url" target="_blank">{{ audio.url }}</a></p>
+            <p><strong>Texto transcrito:</strong> "{{ audio.texto_extraido || '...Procesando transcripción...' }}"</p>
           </div>
         </div>
 
-        <!-- Elemento de Solicitud de Emergencia 3 (Pinchazo de Llanta) -->
-        <div class="request-item">
-          <div class="request-info">
-            <span class="badge priority-low">Baja Prioridad</span>
-            <h4>Pinchazo de Llanta - Hyundai Tucson</h4>
-            <p>Ubicación: Av. Banzer 4to Anillo</p>
+        <!-- Textos Opcionales -->
+        <h4 *ngIf="getTexts(selectedRequest).length > 0">Textos opcionales del cliente:</h4>
+        <div class="texts-list">
+          <div class="evidence-item text-box" *ngFor="let txt of getTexts(selectedRequest)">
+            <p>{{ txt.texto_extraido }}</p>
           </div>
-          <div class="request-actions">
-            <button class="btn-accept">Aceptar</button>
-            <button class="btn-reject">Rechazar</button>
-          </div>
+        </div>
+      </div>
+
+      <div class="assignment-section">
+        <h3>Asignar Personal y Equipo</h3>
+
+        <div class="form-group" style="background: #ebf8ff; border-left: 4px solid #3182ce; padding: 12px 14px; border-radius: 8px;">
+          <p style="margin: 0 0 8px 0; color: #2c5282;">
+            Selecciona manualmente el transporte que enviará el taller.
+          </p>
+          <p *ngIf="isLoadingDecisionResources" style="margin: 0 0 8px 0; color: #2d3748;">
+            Cargando disponibilidad...
+          </p>
+          <p style="margin: 0; color: #2d3748;"><strong>Técnicos disponibles:</strong> {{ availableTechniciansCount }}</p>
+          <p style="margin: 4px 0 0 0; color: #2d3748;"><strong>Transportes disponibles:</strong> {{ availableVehiclesCount }}</p>
+          <small *ngIf="availableVehiclesCount === 0" style="display: block; margin-top: 8px; color: #c05621;">
+            No hay transportes disponibles; registra o libera uno para poder aceptar solicitudes.
+          </small>
+        </div>
+
+        <div class="form-group" style="margin-top: 12px;">
+          <label for="manualTransportSelect">Transporte a asignar</label>
+          <select
+            id="manualTransportSelect"
+            name="manualTransportSelect"
+            [(ngModel)]="selectedTransportId"
+            [disabled]="isRequestDecisionInProgress || isLoadingDecisionResources || availableDecisionVehicles.length === 0"
+          >
+            <option [ngValue]="null">Selecciona un transporte</option>
+            <option *ngFor="let vehicle of availableDecisionVehicles" [ngValue]="vehicle.id">
+              {{ getVehicleLabel(vehicle) }}
+            </option>
+          </select>
+          <small *ngIf="selectedTransportId === null" style="display: block; margin-top: 6px; color: #4a5568;">
+            Debes seleccionar un transporte para poder aceptar la solicitud.
+          </small>
         </div>
 
       </div>
-    </section>
-  </main>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-danger" (click)="rechazarSolicitud()" [disabled]="isRequestDecisionInProgress">
+        {{ isRejectingRequest ? 'Rechazando...' : 'Rechazar Solicitud' }}
+      </button>
+      <button class="btn-secondary" (click)="closeModal()" [disabled]="isRequestDecisionInProgress">Cancelar</button>
+      <button class="btn-primary" (click)="aceptarSolicitud()" [disabled]="isRequestDecisionInProgress || isLoadingDecisionResources || availableTechniciansCount === 0 || availableDecisionVehicles.length === 0 || selectedTransportId === null">
+        {{ isAcceptingRequest ? 'Aceptando...' : 'Aceptar Solicitud' }}
+      </button>
+    </div>
+
+  </div>
 </div>
