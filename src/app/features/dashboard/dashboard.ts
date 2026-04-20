@@ -4,9 +4,13 @@ import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { finalize, timeout } from 'rxjs';
 import * as L from 'leaflet';
+import { environment } from '../../../environments/environment';
 import { IncidentService, WorkshopIncomingRequestItem } from '../../core/services/incident.service';
 import {
   WorkshopService,
+  WorkshopProfileResponse,
+  WorkshopProfileUpdateRequest,
+  WorkshopServiceCatalogItem,
   WorkshopTechnicianListItemResponse,
   WorkshopTechnicianLocationItem,
   WorkshopIncidentHistoryItemResponse,
@@ -30,13 +34,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private cdr = inject(ChangeDetectorRef);
   
   // Pestaña actual
-  currentTab: 'inicio' | 'vehiculos' | 'tecnicos' | 'historial' = 'inicio';
+  currentTab: 'inicio' | 'vehiculos' | 'tecnicos' | 'historial' | 'mi_taller' = 'inicio';
 
   // Nombre del taller simulado por defecto
   tallerNombre = 'Taller Mecánico';
   
   // Estado para la tabla/lista principal
   solicitudesEntrantes: WorkshopIncomingRequestItem[] = [];
+  solicitudesEnProceso: WorkshopIncomingRequestItem[] = [];
   errorMessage: string | null = null;
   
   // Estado para Técnicos
@@ -47,11 +52,27 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // Estado para Historial
   historial: WorkshopIncidentHistoryItemResponse[] = [];
   historialError: string | null = null;
+  readonly historyPageSize = 10;
+  historyCurrentPage = 1;
+
+  // Estado para perfil del taller
+  workshopProfile: WorkshopProfileResponse | null = null;
+  workshopNameInput = '';
+  workshopLocationTextInput = '';
+  workshopLatitudeInput = '';
+  workshopLongitudeInput = '';
+  workshopServiceCatalog: WorkshopServiceCatalogItem[] = [];
+  selectedWorkshopServiceIds: number[] = [];
+  isLoadingWorkshopProfile = false;
+  isSavingWorkshopProfile = false;
+  workshopProfileError: string | null = null;
+  workshopProfileSuccess: string | null = null;
 
   // Timer para actualización
   ubicacionTimer: any;
   incomingTimer: any;
   incomingToastTimer: any;
+  incomingRefreshRetryTimer: ReturnType<typeof setTimeout> | null = null;
   incomingNotice: string | null = null;
   knownIncomingRequestIds: Set<number> = new Set<number>();
 
@@ -61,6 +82,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   isLoadingDecisionResources = false;
   selectedTransportId: number | null = null;
   private incidentMap: L.Map | null = null;
+  private incidentMarker: L.CircleMarker | null = null;
+  private technicianMarker: L.CircleMarker | null = null;
+  private technicianTrailPolyline: L.Polyline | null = null;
+  private technicianTrail: L.LatLngExpression[] = [];
   private mapInitTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Listas para selección
@@ -131,6 +156,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (this.incomingToastTimer) {
       clearTimeout(this.incomingToastTimer);
     }
+    if (this.incomingRefreshRetryTimer) {
+      clearTimeout(this.incomingRefreshRetryTimer);
+      this.incomingRefreshRetryTimer = null;
+    }
     if (this.mapInitTimer) {
       clearTimeout(this.mapInitTimer);
       this.mapInitTimer = null;
@@ -138,7 +167,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.destroyIncidentMap();
   }
 
-  setTab(tab: 'inicio' | 'vehiculos' | 'tecnicos' | 'historial') {
+  setTab(tab: 'inicio' | 'vehiculos' | 'tecnicos' | 'historial' | 'mi_taller') {
     if (this.isAnyActionInProgress) {
       return;
     }
@@ -158,8 +187,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (this.incomingTimer) {
       clearInterval(this.incomingTimer);
     }
-    // Refresca solicitudes en segundo plano para notificar nuevas emergencias.
-    this.incomingTimer = setInterval(() => this.loadIncomingRequests(true), 10000);
+    // Refresca solicitudes en segundo plano para notificar nuevas emergencias y mantener la vista sincronizada.
+    this.incomingTimer = setInterval(() => {
+      this.loadIncomingRequests(true);
+    }, 4000);
   }
 
   loadDataForTab() {
@@ -179,7 +210,203 @@ export class DashboardComponent implements OnInit, OnDestroy {
       case 'historial':
         this.loadHistory();
         break;
+      case 'mi_taller':
+        this.loadWorkshopProfile();
+        break;
     }
+  }
+
+  loadWorkshopProfile() {
+    this.workshopProfileError = null;
+    this.workshopProfileSuccess = null;
+    this.isLoadingWorkshopProfile = true;
+
+    this.workshopService.getProfile().pipe(
+      timeout(15000),
+      finalize(() => {
+        this.isLoadingWorkshopProfile = false;
+        this.requestRender();
+      })
+    ).subscribe({
+      next: (profile) => {
+        this.workshopProfile = profile;
+        this.workshopNameInput = profile.nombre_taller || '';
+        this.workshopLocationTextInput = profile.ubicacion_texto || '';
+        this.workshopLatitudeInput = profile.latitud !== null && profile.latitud !== undefined
+          ? String(profile.latitud)
+          : '';
+        this.workshopLongitudeInput = profile.longitud !== null && profile.longitud !== undefined
+          ? String(profile.longitud)
+          : '';
+        this.workshopServiceCatalog = Array.isArray(profile.servicios_catalogo) ? profile.servicios_catalogo : [];
+        this.selectedWorkshopServiceIds = Array.isArray(profile.servicios_ofrecidos_ids)
+          ? [...profile.servicios_ofrecidos_ids]
+          : [];
+      },
+      error: (err) => {
+        console.error('Error cargando perfil del taller:', err);
+        this.workshopProfileError = err?.name === 'TimeoutError'
+          ? 'La carga del perfil tardó demasiado. Reintenta en unos segundos.'
+          : (err?.error?.detail || 'No se pudo cargar el perfil del taller.');
+      }
+    });
+  }
+
+  isWorkshopServiceSelected(serviceId: number): boolean {
+    return this.selectedWorkshopServiceIds.includes(serviceId);
+  }
+
+  toggleWorkshopService(serviceId: number, checked: boolean) {
+    if (checked) {
+      if (!this.selectedWorkshopServiceIds.includes(serviceId)) {
+        this.selectedWorkshopServiceIds = [...this.selectedWorkshopServiceIds, serviceId];
+      }
+      return;
+    }
+
+    this.selectedWorkshopServiceIds = this.selectedWorkshopServiceIds.filter((id) => id !== serviceId);
+  }
+
+  useCurrentWorkshopLocation() {
+    this.workshopProfileError = null;
+
+    if (!('geolocation' in navigator)) {
+      this.workshopProfileError = 'Este navegador no soporta geolocalización.';
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        this.workshopLatitudeInput = String(lat);
+        this.workshopLongitudeInput = String(lng);
+        void this.reverseGeocodeWorkshopLocation(lat, lng);
+        this.requestRender();
+      },
+      () => {
+        this.workshopProfileError = 'No se pudo obtener la ubicación actual. Revisa permisos de ubicación.';
+        this.requestRender();
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+      }
+    );
+  }
+
+  private async reverseGeocodeWorkshopLocation(lat: number, lng: number): Promise<void> {
+    try {
+      const endpoint = new URL('https://nominatim.openstreetmap.org/reverse');
+      endpoint.searchParams.set('lat', lat.toFixed(6));
+      endpoint.searchParams.set('lon', lng.toFixed(6));
+      endpoint.searchParams.set('format', 'jsonv2');
+      endpoint.searchParams.set('zoom', '18');
+      endpoint.searchParams.set('addressdetails', '1');
+
+      const response = await fetch(endpoint.toString(), {
+        headers: {
+          Accept: 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = await response.json();
+      const displayName = typeof payload?.display_name === 'string'
+        ? payload.display_name.trim()
+        : '';
+
+      if (displayName) {
+        this.workshopLocationTextInput = displayName;
+        this.requestRender();
+      }
+    } catch {
+      // Si falla la geocodificacion inversa, se conserva solo lat/lng.
+    }
+  }
+
+  saveWorkshopProfile() {
+    if (this.isSavingWorkshopProfile) {
+      return;
+    }
+
+    this.workshopProfileError = null;
+    this.workshopProfileSuccess = null;
+
+    const trimmedName = this.workshopNameInput.trim();
+    if (trimmedName.length < 3) {
+      this.workshopProfileError = 'El nombre del taller debe tener al menos 3 caracteres.';
+      return;
+    }
+
+    const rawLocation = this.workshopLocationTextInput ?? '';
+    const trimmedLocation = String(rawLocation).trim();
+
+    const latInputText = String(this.workshopLatitudeInput ?? '').trim();
+    const lngInputText = String(this.workshopLongitudeInput ?? '').trim();
+    const hasLat = latInputText.length > 0;
+    const hasLng = lngInputText.length > 0;
+    if ((hasLat && !hasLng) || (!hasLat && hasLng)) {
+      this.workshopProfileError = 'Debes completar tanto latitud como longitud.';
+      return;
+    }
+
+    const lat = hasLat ? Number(latInputText) : null;
+    const lng = hasLng ? Number(lngInputText) : null;
+
+    if (lat !== null && (!Number.isFinite(lat) || lat < -90 || lat > 90)) {
+      this.workshopProfileError = 'Latitud inválida. Debe estar entre -90 y 90.';
+      return;
+    }
+
+    if (lng !== null && (!Number.isFinite(lng) || lng < -180 || lng > 180)) {
+      this.workshopProfileError = 'Longitud inválida. Debe estar entre -180 y 180.';
+      return;
+    }
+
+    const payload: WorkshopProfileUpdateRequest = {
+      nombre_taller: trimmedName,
+      ubicacion_texto: trimmedLocation || null,
+      latitud: lat,
+      longitud: lng,
+      servicios_ofrecidos_ids: [...this.selectedWorkshopServiceIds],
+    };
+
+    this.isSavingWorkshopProfile = true;
+    this.workshopService.updateProfile(payload).pipe(
+      timeout(20000),
+      finalize(() => {
+        this.isSavingWorkshopProfile = false;
+        this.requestRender();
+      })
+    ).subscribe({
+      next: (profile) => {
+        this.workshopProfile = profile;
+        this.workshopProfileSuccess = 'Perfil del taller actualizado correctamente.';
+        this.workshopNameInput = profile.nombre_taller || '';
+        this.workshopLocationTextInput = profile.ubicacion_texto || '';
+        this.workshopLatitudeInput = profile.latitud !== null && profile.latitud !== undefined
+          ? String(profile.latitud)
+          : '';
+        this.workshopLongitudeInput = profile.longitud !== null && profile.longitud !== undefined
+          ? String(profile.longitud)
+          : '';
+        this.workshopServiceCatalog = Array.isArray(profile.servicios_catalogo) ? profile.servicios_catalogo : [];
+        this.selectedWorkshopServiceIds = Array.isArray(profile.servicios_ofrecidos_ids)
+          ? [...profile.servicios_ofrecidos_ids]
+          : [];
+        this.tallerNombre = profile.nombre_taller || this.tallerNombre;
+      },
+      error: (err) => {
+        console.error('Error guardando perfil del taller:', err);
+        this.workshopProfileError = err?.name === 'TimeoutError'
+          ? 'La actualización tardó demasiado. Intenta nuevamente.'
+          : (err?.error?.detail || 'No se pudo guardar el perfil del taller.');
+      }
+    });
   }
 
   loadIncomingRequests(showNoticeForNew = false) {
@@ -189,7 +416,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
         const previousIds = this.knownIncomingRequestIds;
         const hadPreviousSync = previousIds.size > 0;
 
-        this.solicitudesEntrantes = res.solicitudes;
+        const incomingRequests = Array.isArray(res?.solicitudes) ? res.solicitudes : [];
+        
+        this.solicitudesEntrantes = incomingRequests.filter((req) => this.canRespondRequest(req.estado_solicitud));
+        this.solicitudesEnProceso = incomingRequests.filter((req) => !this.canRespondRequest(req.estado_solicitud));
+
+        if (this.selectedRequest) {
+          const refreshed = incomingRequests.find(
+            (req) => req.solicitud_id === this.selectedRequest?.solicitud_id
+          );
+          if (refreshed) {
+            this.selectedRequest = refreshed;
+            if (this.showModal && this.incidentMap) {
+              this.refreshIncidentMapOverlays();
+            }
+          }
+        }
 
         const newRequests = this.solicitudesEntrantes.filter(
           (request) => !previousIds.has(request.solicitud_id)
@@ -619,22 +861,145 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.historialError = null;
     this.workshopService.getHistory().subscribe({
       next: (res) => {
-        this.historial = res.historial;
+        const incomingHistory = res.historial ?? res.incidentes ?? [];
+        const rawHistory = Array.isArray(incomingHistory) ? incomingHistory : [];
+        
+        this.historial = rawHistory.filter((item: WorkshopIncidentHistoryItemResponse) => {
+          const reqStates = item.estados_solicitud || [];
+          const iState = item.estado_incidente || item.estado_actual;
+          
+          const isPending = reqStates.includes('enviada') || reqStates.includes('pendiente');
+          const isAccepted = reqStates.includes('aceptada');
+          const isFinalized = iState === 'finalizado' || iState === 'cancelado';
+          
+          // Ocultar solicitudes que aun no se aceptaron o rechazaron
+          if (isPending && !reqStates.includes('rechazada') && !reqStates.includes('otro_taller_acepto') && !isAccepted) return false;
+          // Ocultar solicitudes que el taller acepto pero aun siguen en proceso
+          if (isAccepted && !isFinalized) return false;
+          
+          return true;
+        });
+        
+        this.historyCurrentPage = 1;
         this.requestRender();
       },
       error: (err) => {
         console.error('Error cargando historial:', err);
-        this.historialError = 'No se pudo cargar el historial.';
+        this.historialError = err?.error?.detail || 'No se pudo cargar el historial.';
         this.requestRender();
       }
     });
   }
 
+  getHistoryDate(item: WorkshopIncidentHistoryItemResponse): string | null {
+    return item.fecha_hora ?? item.fecha_incidente ?? null;
+  }
+
+  getHistoryIncidentState(item: WorkshopIncidentHistoryItemResponse): string {
+    return item.estado_incidente ?? item.estado_actual ?? 'desconocido';
+  }
+
+  getHistoryRequestStates(item: WorkshopIncidentHistoryItemResponse): string {
+    if (!Array.isArray(item.estados_solicitud) || item.estados_solicitud.length === 0) {
+      return 'Sin registro';
+    }
+    return item.estados_solicitud.join(', ');
+  }
+
+  getHistoryAmount(item: WorkshopIncidentHistoryItemResponse): number | null {
+    if (typeof item.monto_total === 'number') {
+      return item.monto_total;
+    }
+    const amount = item.metrica?.costo_total;
+    return typeof amount === 'number' ? amount : null;
+  }
+
+  get totalHistoryPages(): number {
+    if (this.historial.length === 0) {
+      return 1;
+    }
+    return Math.ceil(this.historial.length / this.historyPageSize);
+  }
+
+  get paginatedHistory(): WorkshopIncidentHistoryItemResponse[] {
+    const startIndex = (this.historyCurrentPage - 1) * this.historyPageSize;
+    const endIndex = startIndex + this.historyPageSize;
+    return this.historial.slice(startIndex, endIndex);
+  }
+
+  get historyStartIndex(): number {
+    if (this.historial.length === 0) {
+      return 0;
+    }
+    return (this.historyCurrentPage - 1) * this.historyPageSize + 1;
+  }
+
+  get historyEndIndex(): number {
+    if (this.historial.length === 0) {
+      return 0;
+    }
+    return Math.min(this.historyCurrentPage * this.historyPageSize, this.historial.length);
+  }
+
+  get historyPageNumbers(): number[] {
+    if (this.totalHistoryPages <= 1) {
+      return [1];
+    }
+
+    const maxVisiblePages = 5;
+    const halfWindow = Math.floor(maxVisiblePages / 2);
+    let start = Math.max(1, this.historyCurrentPage - halfWindow);
+    let end = Math.min(this.totalHistoryPages, start + maxVisiblePages - 1);
+
+    if (end - start + 1 < maxVisiblePages) {
+      start = Math.max(1, end - maxVisiblePages + 1);
+    }
+
+    const pages: number[] = [];
+    for (let page = start; page <= end; page += 1) {
+      pages.push(page);
+    }
+    return pages;
+  }
+
+  goToHistoryPage(page: number): void {
+    if (!Number.isFinite(page)) {
+      return;
+    }
+
+    const nextPage = Math.trunc(page);
+    if (nextPage < 1 || nextPage > this.totalHistoryPages || nextPage === this.historyCurrentPage) {
+      return;
+    }
+
+    this.historyCurrentPage = nextPage;
+    this.requestRender();
+  }
+
+  goToPreviousHistoryPage(): void {
+    this.goToHistoryPage(this.historyCurrentPage - 1);
+  }
+
+  goToNextHistoryPage(): void {
+    this.goToHistoryPage(this.historyCurrentPage + 1);
+  }
+
+  isViewOnlyModal = false;
+
   openDetails(request: WorkshopIncomingRequestItem) {
     this.selectedRequest = request;
+    this.isViewOnlyModal = false;
     this.showModal = true;
     this.selectedTransportId = null;
     this.loadDecisionResources();
+    this.scheduleMapRender();
+  }
+
+  openEnProcesoDetails(request: WorkshopIncomingRequestItem) {
+    this.selectedRequest = request;
+    this.isViewOnlyModal = true;
+    this.showModal = true;
+    this.selectedTransportId = null;
     this.scheduleMapRender();
   }
 
@@ -683,7 +1048,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         const assignedTransport = res.transporte_id ? `Transporte #${res.transporte_id}` : 'sin transporte';
         alert(`Solicitud aceptada. Recursos asignados: ${assignedTech}, ${assignedTransport}.`);
         this.closeModal();
-        this.loadIncomingRequests();
+        this.refreshIncomingRequests();
         this.loadTechniciansAndLocations();
         this.loadWorkshopVehicles();
       },
@@ -724,7 +1089,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       next: () => {
         alert('Solicitud rechazada correctamente.');
         this.closeModal();
-        this.loadIncomingRequests();
+        this.refreshIncomingRequests();
       },
       error: (err) => {
         console.error('Error al rechazar la solicitud:', err);
@@ -757,14 +1122,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (!this.selectedRequest) {
       return false;
     }
-    const lat = this.selectedRequest.latitud;
-    const lng = this.selectedRequest.longitud;
-    return (
-      typeof lat === 'number'
-      && typeof lng === 'number'
-      && Number.isFinite(lat)
-      && Number.isFinite(lng)
-    );
+
+    return this.getIncidentCoordinates(this.selectedRequest) !== null
+      || this.getTechnicianCoordinates(this.selectedRequest) !== null;
   }
 
   get isVehicleActionInProgress(): boolean {
@@ -789,6 +1149,21 @@ export class DashboardComponent implements OnInit, OnDestroy {
     } catch {
       // Ignorar si el componente ya fue destruido mientras resolvia una peticion.
     }
+  }
+
+  private refreshIncomingRequests(): void {
+    this.loadIncomingRequests();
+
+    if (this.incomingRefreshRetryTimer) {
+      clearTimeout(this.incomingRefreshRetryTimer);
+      this.incomingRefreshRetryTimer = null;
+    }
+
+    // Reintento breve para absorber eventual consistencia del backend.
+    this.incomingRefreshRetryTimer = setTimeout(() => {
+      this.loadIncomingRequests();
+      this.incomingRefreshRetryTimer = null;
+    }, 1500);
   }
 
   private normalizeTechnicians(items: any[]): WorkshopTechnicianListItemResponse[] {
@@ -828,6 +1203,64 @@ export class DashboardComponent implements OnInit, OnDestroy {
       || normalized.endsWith('.webm');
   }
 
+  private resolveEvidenceAudioUrl(evidence: { url?: string | null; url_audio?: string | null }): string | null {
+    const directAudio = (evidence.url_audio ?? '').trim();
+    if (directAudio) {
+      return directAudio;
+    }
+
+    const fallback = (evidence.url ?? '').trim();
+    if (fallback && this.looksLikeAudioUrl(fallback)) {
+      return fallback;
+    }
+
+    return null;
+  }
+
+  private getApiOrigin(): string {
+    try {
+      return new URL(environment.apiUrl, window.location.origin).origin;
+    } catch {
+      return window.location.origin;
+    }
+  }
+
+  getEvidenceUrl(url: string | null): string {
+    if (!url) {
+      return '';
+    }
+
+    const trimmed = url.trim();
+    if (!trimmed) {
+      return '';
+    }
+
+    if (/^https?:\/\//i.test(trimmed)) {
+      return trimmed;
+    }
+
+    const apiOrigin = this.getApiOrigin();
+    if (trimmed.startsWith('/')) {
+      return `${apiOrigin}${trimmed}`;
+    }
+
+    return `${apiOrigin}/${trimmed.replace(/^\.?\//, '')}`;
+  }
+
+  openTechnicianLocationInMaps(item: WorkshopIncomingRequestItem): void {
+    const lat = typeof item.tecnico_latitud === 'number' ? item.tecnico_latitud : null;
+    const lng = typeof item.tecnico_longitud === 'number' ? item.tecnico_longitud : null;
+
+    if (lat === null || lng === null || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+      this.errorMessage = 'El técnico aún no compartió una ubicación válida.';
+      this.requestRender();
+      return;
+    }
+
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    window.open(mapsUrl, '_blank', 'noopener,noreferrer');
+  }
+
   private cleanTextEvidence(text: string | null): string | null {
     if (!text) {
       return null;
@@ -859,8 +1292,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   getAudios(request: WorkshopIncomingRequestItem) {
     return request.evidencias.filter(
-      (e) => e.tipo === 'audio' || this.looksLikeAudioUrl(e.url)
+      (e) => e.tipo === 'audio' || !!this.resolveEvidenceAudioUrl(e)
     );
+  }
+
+  getAudioSource(evidence: { url?: string | null; url_audio?: string | null }): string {
+    return this.getEvidenceUrl(this.resolveEvidenceAudioUrl(evidence));
   }
 
   getTexts(request: WorkshopIncomingRequestItem) {
@@ -905,33 +1342,142 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     this.destroyIncidentMap();
 
-    const latitude = Number(this.selectedRequest.latitud);
-    const longitude = Number(this.selectedRequest.longitud);
+    const incidentCoordinates = this.getIncidentCoordinates(this.selectedRequest);
+    const technicianCoordinates = this.getTechnicianCoordinates(this.selectedRequest);
+    const initialCenter = technicianCoordinates ?? incidentCoordinates;
+    if (!initialCenter) {
+      this.destroyIncidentMap();
+      return;
+    }
 
     this.incidentMap = L.map(mapElement, {
       zoomControl: true,
       attributionControl: true
-    }).setView([latitude, longitude], 15);
+    }).setView(initialCenter, 15);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(this.incidentMap);
 
-    L.circleMarker([latitude, longitude], {
-      radius: 9,
-      color: '#1d4ed8',
-      weight: 3,
-      fillColor: '#60a5fa',
-      fillOpacity: 0.75
-    })
-      .addTo(this.incidentMap)
-      .bindPopup('Ubicación reportada del incidente')
-      .openPopup();
+    this.technicianTrail = [];
+    this.refreshIncidentMapOverlays();
 
     setTimeout(() => {
       this.incidentMap?.invalidateSize();
     }, 0);
+  }
+
+  private refreshIncidentMapOverlays(): void {
+    if (!this.incidentMap || !this.selectedRequest) {
+      return;
+    }
+
+    if (this.incidentMarker) {
+      this.incidentMap.removeLayer(this.incidentMarker);
+      this.incidentMarker = null;
+    }
+    if (this.technicianMarker) {
+      this.incidentMap.removeLayer(this.technicianMarker);
+      this.technicianMarker = null;
+    }
+    if (this.technicianTrailPolyline) {
+      this.incidentMap.removeLayer(this.technicianTrailPolyline);
+      this.technicianTrailPolyline = null;
+    }
+
+    const incidentCoordinates = this.getIncidentCoordinates(this.selectedRequest);
+    const technicianCoordinates = this.getTechnicianCoordinates(this.selectedRequest);
+
+    if (incidentCoordinates) {
+      this.incidentMarker = L.circleMarker(incidentCoordinates, {
+        radius: 9,
+        color: '#1d4ed8',
+        weight: 3,
+        fillColor: '#60a5fa',
+        fillOpacity: 0.75
+      })
+        .addTo(this.incidentMap)
+        .bindPopup('Ubicación reportada del incidente');
+    }
+
+    if (technicianCoordinates) {
+      const lastTrailPoint = this.technicianTrail[this.technicianTrail.length - 1] as [number, number] | undefined;
+      const isDuplicate = !!lastTrailPoint
+        && lastTrailPoint[0] === technicianCoordinates[0]
+        && lastTrailPoint[1] === technicianCoordinates[1];
+
+      if (!isDuplicate) {
+        this.technicianTrail = [...this.technicianTrail, technicianCoordinates].slice(-80);
+      }
+
+      this.technicianMarker = L.circleMarker(technicianCoordinates, {
+        radius: 8,
+        color: '#b91c1c',
+        weight: 3,
+        fillColor: '#f87171',
+        fillOpacity: 0.9
+      })
+        .addTo(this.incidentMap)
+        .bindPopup('Ubicación actual del técnico');
+
+      if (this.technicianTrail.length >= 2) {
+        this.technicianTrailPolyline = L.polyline(this.technicianTrail, {
+          color: '#ef4444',
+          weight: 4,
+          opacity: 0.8,
+        }).addTo(this.incidentMap);
+      }
+    }
+
+    const boundsLayers: L.Layer[] = [];
+    if (this.incidentMarker) {
+      boundsLayers.push(this.incidentMarker);
+    }
+    if (this.technicianMarker) {
+      boundsLayers.push(this.technicianMarker);
+    }
+    if (this.technicianTrailPolyline) {
+      boundsLayers.push(this.technicianTrailPolyline);
+    }
+
+    if (boundsLayers.length > 0) {
+      const group = L.featureGroup(boundsLayers);
+      this.incidentMap.fitBounds(group.getBounds(), {
+        padding: [24, 24],
+        maxZoom: 16,
+      });
+    }
+
+    this.incidentMap.invalidateSize();
+  }
+
+  private getIncidentCoordinates(request: WorkshopIncomingRequestItem): [number, number] | null {
+    const lat = request.latitud;
+    const lng = request.longitud;
+    if (
+      typeof lat === 'number'
+      && typeof lng === 'number'
+      && Number.isFinite(lat)
+      && Number.isFinite(lng)
+    ) {
+      return [lat, lng];
+    }
+    return null;
+  }
+
+  private getTechnicianCoordinates(request: WorkshopIncomingRequestItem): [number, number] | null {
+    const lat = request.tecnico_latitud;
+    const lng = request.tecnico_longitud;
+    if (
+      typeof lat === 'number'
+      && typeof lng === 'number'
+      && Number.isFinite(lat)
+      && Number.isFinite(lng)
+    ) {
+      return [lat, lng];
+    }
+    return null;
   }
 
   private destroyIncidentMap(): void {
@@ -939,5 +1485,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.incidentMap.remove();
       this.incidentMap = null;
     }
+    this.incidentMarker = null;
+    this.technicianMarker = null;
+    this.technicianTrailPolyline = null;
+    this.technicianTrail = [];
   }
 }

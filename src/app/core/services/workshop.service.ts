@@ -37,22 +37,36 @@ export interface WorkshopTechnicianUnassignRequest {
 
 export interface WorkshopIncidentHistoryItemResponse {
   incidente_id: number;
-  fecha_incidente: string;
+  solicitud_id?: number | null;
+  fecha_hora?: string;
+  fecha_incidente?: string;
   tipo_problema: string;
-  estado_actual: string;
+  estado_incidente?: string;
+  estado_actual?: string;
   vehiculo_placa: string;
-  vehiculo_marca: string | null;
-  vehiculo_modelo: string | null;
-  cliente_nombre: string;
-  cliente_telefono: string | null;
-  monto_total: number | null;
-  calificacion_promedio: number | null;
+  vehiculo_marca?: string | null;
+  vehiculo_modelo?: string | null;
+  cliente_nombre?: string;
+  cliente_telefono?: string | null;
+  estados_solicitud?: string[];
+  metrica?: {
+    tiempo_minutos?: number;
+    costo_total?: number;
+    comision_plataforma?: number;
+    distancia_km?: number | null;
+    observaciones?: string | null;
+    fecha_cierre?: string | null;
+  } | null;
+  monto_total?: number | null;
+  calificacion_promedio?: number | null;
 }
 
 export interface WorkshopIncidentHistoryResponse {
-  taller_nombre: string;
-  total_incidentes: number;
-  historial: WorkshopIncidentHistoryItemResponse[];
+  taller_nombre?: string;
+  total_incidentes?: number;
+  total?: number;
+  historial?: WorkshopIncidentHistoryItemResponse[];
+  incidentes?: WorkshopIncidentHistoryItemResponse[];
 }
 
 export interface WorkshopVehicleCreateRequest {
@@ -78,6 +92,29 @@ export interface WorkshopVehicleResponse {
 export interface WorkshopVehicleDeleteResponse {
   id: number;
   mensaje: string;
+}
+
+export interface WorkshopServiceCatalogItem {
+  id: number;
+  nombre: string;
+}
+
+export interface WorkshopProfileResponse {
+  taller_id: number;
+  nombre_taller: string;
+  ubicacion_texto: string | null;
+  latitud: number | null;
+  longitud: number | null;
+  servicios_catalogo: WorkshopServiceCatalogItem[];
+  servicios_ofrecidos_ids: number[];
+}
+
+export interface WorkshopProfileUpdateRequest {
+  nombre_taller: string;
+  ubicacion_texto?: string | null;
+  latitud?: number | null;
+  longitud?: number | null;
+  servicios_ofrecidos_ids: number[];
 }
 
 @Injectable({
@@ -147,5 +184,15 @@ export class WorkshopService {
   // Eliminar vehículo/unidad de servicio del taller
   deleteVehicle(vehicleId: number): Observable<WorkshopVehicleDeleteResponse> {
     return this.http.delete<WorkshopVehicleDeleteResponse>(`${this.apiUrl}/vehiculos/${vehicleId}`, { headers: this.getHeaders() });
+  }
+
+  // Obtener perfil editable del taller y catálogo de servicios.
+  getProfile(): Observable<WorkshopProfileResponse> {
+    return this.http.get<WorkshopProfileResponse>(`${this.apiUrl}/perfil`, { headers: this.getHeaders() });
+  }
+
+  // Actualizar perfil y servicios ofrecidos por el taller.
+  updateProfile(data: WorkshopProfileUpdateRequest): Observable<WorkshopProfileResponse> {
+    return this.http.put<WorkshopProfileResponse>(`${this.apiUrl}/perfil`, data, { headers: this.getHeaders() });
   }
 }

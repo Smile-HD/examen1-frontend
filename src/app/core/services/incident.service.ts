@@ -7,6 +7,7 @@ export interface WorkshopEvidenceItem {
   evidencia_id: number;
   tipo: string;
   url: string | null;
+  url_audio?: string | null;
   texto_extraido: string | null;
 }
 
@@ -27,6 +28,11 @@ export interface WorkshopIncomingRequestItem {
   cliente_id: number;
   fecha_asignacion: string;
   evidencias: WorkshopEvidenceItem[];
+  tecnico_id?: number | null;
+  tecnico_latitud?: number | null;
+  tecnico_longitud?: number | null;
+  tecnico_precision_metros?: number | null;
+  tecnico_ubicacion_actualizada_en?: string | null;
 }
 
 export interface WorkshopIncomingRequestsResponse {

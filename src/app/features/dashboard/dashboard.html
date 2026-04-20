@@ -13,6 +13,7 @@
       <a [class.active]="currentTab === 'inicio'" [class.disabled]="isAnyActionInProgress" (click)="setTab('inicio')">INICIO</a>
       <a [class.active]="currentTab === 'vehiculos'" [class.disabled]="isAnyActionInProgress" (click)="setTab('vehiculos')">MIS VEHÍCULOS</a>
       <a [class.active]="currentTab === 'tecnicos'" [class.disabled]="isAnyActionInProgress" (click)="setTab('tecnicos')">MIS TÉCNICOS</a>
+      <a [class.active]="currentTab === 'mi_taller'" [class.disabled]="isAnyActionInProgress" (click)="setTab('mi_taller')">MI TALLER</a>
       <a [class.active]="currentTab === 'historial'" [class.disabled]="isAnyActionInProgress" (click)="setTab('historial')">HISTORIAL</a>
     </nav>
     
@@ -43,6 +44,10 @@
         <h1>Historial de Incidentes</h1>
         <p>Revisa los incidentes a los que tu taller fue solicitado y atendió.</p>
       </div>
+      <div class="welcome-text" *ngIf="currentTab === 'mi_taller'">
+        <h1>Mi Taller</h1>
+        <p>Actualiza tus datos, servicios ofrecidos y ubicación del taller.</p>
+      </div>
     </header>
 
     <ng-container *ngIf="currentTab === 'inicio'">
@@ -52,6 +57,36 @@
         <div class="metric-card">
           <h3>Solicitudes Pendientes</h3>
           <div class="value alert-text">{{ solicitudesEntrantes.length }}</div>
+        </div>
+      </section>
+
+      <!-- SOLICITUDES ACEPTADAS EN PROCESO -->
+      <section class="recent-requests" style="margin-bottom: 2rem;">
+        <h2>Solicitudes Aceptadas (En Proceso)</h2>
+
+        <div *ngIf="solicitudesEnProceso.length === 0" class="empty-box">
+          No tienes incidentes en proceso actualmente.
+        </div>
+
+        <div class="request-list" *ngIf="solicitudesEnProceso.length > 0">
+          <div class="request-item" *ngFor="let item of solicitudesEnProceso">
+            <div class="request-info">
+              <h4>Incidente #{{ item.incidente_id }} - {{ item.tipo_problema }}</h4>
+              <p><strong>Vehículo:</strong> {{ item.vehiculo_marca || 'Vehículo' }} {{ item.vehiculo_modelo || '' }} ({{ item.vehiculo_placa }})</p>
+              <p><strong>Fecha de solicitud:</strong> {{ item.fecha_asignacion | date:'medium' }}</p>
+              <p><strong>Estado del servicio:</strong> {{ item.estado_incidente }}</p>
+              <p *ngIf="item.tecnico_latitud !== null && item.tecnico_longitud !== null">
+                <strong>Ubicación técnico:</strong>
+                Lat {{ item.tecnico_latitud }}, Lng {{ item.tecnico_longitud }}
+                <span *ngIf="item.tecnico_ubicacion_actualizada_en">(Act: {{ item.tecnico_ubicacion_actualizada_en | date:'shortTime' }})</span>
+              </p>
+            </div>
+            <div class="request-actions">
+              <button class="btn-primary" (click)="openEnProcesoDetails(item)" [disabled]="isAnyActionInProgress">
+                Ver seguimiento en mapa
+              </button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -86,6 +121,97 @@
             <div class="request-actions">
               <button *ngIf="canRespondRequest(request.estado_solicitud)" (click)="openDetails(request)" class="btn-accept" [disabled]="isAnyActionInProgress">Ver y Responder</button>
               <span *ngIf="!canRespondRequest(request.estado_solicitud)">{{ request.estado_solicitud }}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </ng-container>
+
+    <!-- Pestaña de Perfil de Taller -->
+    <ng-container *ngIf="currentTab === 'mi_taller'">
+      <section class="workshop-profile-section">
+        <div *ngIf="isLoadingWorkshopProfile" class="empty-box">Cargando perfil del taller...</div>
+        <div *ngIf="workshopProfileError" class="error-box">{{ workshopProfileError }}</div>
+        <div *ngIf="workshopProfileSuccess" class="empty-box" style="border-color: #38a169; color: #276749;">{{ workshopProfileSuccess }}</div>
+
+        <div class="profile-form" *ngIf="!isLoadingWorkshopProfile">
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="workshopNameInput">Nombre del Taller</label>
+              <input
+                id="workshopNameInput"
+                type="text"
+                [(ngModel)]="workshopNameInput"
+                maxlength="150"
+                placeholder="Ej. Taller Sparkle Motors"
+                [disabled]="isSavingWorkshopProfile"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="workshopLocationTextInput">Referencia de Ubicación</label>
+              <input
+                id="workshopLocationTextInput"
+                type="text"
+                [(ngModel)]="workshopLocationTextInput"
+                maxlength="500"
+                placeholder="Ej. Av. Banzer, 3er anillo externo"
+                [disabled]="isSavingWorkshopProfile"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="workshopLatInput">Latitud</label>
+              <input
+                id="workshopLatInput"
+                type="number"
+                step="any"
+                [(ngModel)]="workshopLatitudeInput"
+                placeholder="Ej. -17.783327"
+                [disabled]="isSavingWorkshopProfile"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="workshopLngInput">Longitud</label>
+              <input
+                id="workshopLngInput"
+                type="number"
+                step="any"
+                [(ngModel)]="workshopLongitudeInput"
+                placeholder="Ej. -63.182140"
+                [disabled]="isSavingWorkshopProfile"
+              />
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;">
+            <button class="btn-secondary" (click)="useCurrentWorkshopLocation()" [disabled]="isSavingWorkshopProfile">
+              Usar Mi Ubicación Actual
+            </button>
+            <button class="btn-primary" (click)="saveWorkshopProfile()" [disabled]="isSavingWorkshopProfile">
+              {{ isSavingWorkshopProfile ? 'Guardando...' : 'Guardar Perfil' }}
+            </button>
+          </div>
+
+          <div class="services-panel">
+            <h3>Servicios que Ofrece el Taller</h3>
+            <p>Marca todo lo que tu taller puede resolver para mejorar el matching de emergencias.</p>
+
+            <div *ngIf="workshopServiceCatalog.length === 0" class="empty-box">
+              No hay servicios disponibles en el catálogo por ahora.
+            </div>
+
+            <div class="services-grid" *ngIf="workshopServiceCatalog.length > 0">
+              <label class="service-item" *ngFor="let svc of workshopServiceCatalog">
+                <input
+                  type="checkbox"
+                  [checked]="isWorkshopServiceSelected(svc.id)"
+                  (change)="toggleWorkshopService(svc.id, $any($event.target).checked)"
+                  [disabled]="isSavingWorkshopProfile"
+                />
+                <span>{{ svc.nombre }}</span>
+              </label>
             </div>
           </div>
         </div>
@@ -206,25 +332,58 @@
     <ng-container *ngIf="currentTab === 'historial'">
       <section class="history-section">
         <div *ngIf="historialError" class="error-box">{{ historialError }}</div>
+
+        <div *ngIf="historial.length > 0" class="history-toolbar">
+          <p class="history-summary">
+            Mostrando {{ historyStartIndex }}-{{ historyEndIndex }} de {{ historial.length }} incidentes
+          </p>
+        </div>
         
         <div *ngIf="historial.length === 0 && !historialError" class="empty-box">
           Tu historial está vacío. Aún no has atendido incidentes finalizados.
         </div>
 
         <div class="history-list">
-          <div class="history-item" *ngFor="let item of historial">
-            <div class="history-info">
-              <h4>Incidente #{{ item.incidente_id }} - {{ item.tipo_problema }}</h4>
-              <p><strong>Fecha del incidente:</strong> {{ item.fecha_incidente | date:'medium' }}</p>
-              <p><strong>Vehículo:</strong> {{ item.vehiculo_marca }} {{ item.vehiculo_modelo }} ({{ item.vehiculo_placa }})</p>
-              <p><strong>Cliente:</strong> {{ item.cliente_nombre }} (Tel: {{ item.cliente_telefono || 'N/A' }})</p>
-              <p><strong>Estado Actual Incidente:</strong> <span class="badge state-badge">{{ item.estado_actual }}</span></p>
+          <article class="history-card" *ngFor="let item of paginatedHistory">
+            <div class="history-card-header">
+              <h4>Incidente #{{ item.incidente_id }}</h4>
             </div>
-            <div class="history-metrics" *ngIf="item.monto_total || item.calificacion_promedio">
-               <p *ngIf="item.monto_total"><strong>Ingreso:</strong> ${{ item.monto_total }}</p>
-               <p *ngIf="item.calificacion_promedio"><strong>Valoración Promedio:</strong> {{ item.calificacion_promedio | number:'1.1-1' }} ⭐</p>
+
+            <div class="history-grid">
+              <p><strong>Tipo:</strong> {{ item.tipo_problema }}</p>
+              <p><strong>Fecha:</strong> {{ getHistoryDate(item) | date:'medium' }}</p>
+              <p><strong>Vehículo:</strong> {{ item.vehiculo_marca || 'Vehículo' }} {{ item.vehiculo_modelo || '' }} ({{ item.vehiculo_placa }})</p>
+              <p><strong>Estados de solicitud:</strong> {{ getHistoryRequestStates(item) }}</p>
+              <p *ngIf="item.cliente_nombre"><strong>Cliente:</strong> {{ item.cliente_nombre }} (Tel: {{ item.cliente_telefono || 'N/A' }})</p>
             </div>
+
+            <div class="history-metrics" *ngIf="getHistoryAmount(item) !== null || item.calificacion_promedio || item.metrica?.tiempo_minutos">
+              <p *ngIf="getHistoryAmount(item) !== null"><strong>Ingreso:</strong> ${{ getHistoryAmount(item) }}</p>
+              <p *ngIf="item.metrica?.tiempo_minutos"><strong>Tiempo de servicio:</strong> {{ item.metrica?.tiempo_minutos }} min</p>
+              <p *ngIf="item.calificacion_promedio"><strong>Valoración Promedio:</strong> {{ item.calificacion_promedio | number:'1.1-1' }} ⭐</p>
+            </div>
+          </article>
+        </div>
+
+        <div class="history-pagination" *ngIf="historial.length > historyPageSize">
+          <button class="pagination-btn" (click)="goToPreviousHistoryPage()" [disabled]="historyCurrentPage === 1">
+            Anterior
+          </button>
+
+          <div class="pagination-pages">
+            <button
+              class="pagination-page"
+              *ngFor="let page of historyPageNumbers"
+              [class.active]="page === historyCurrentPage"
+              (click)="goToHistoryPage(page)"
+            >
+              {{ page }}
+            </button>
           </div>
+
+          <button class="pagination-btn" (click)="goToNextHistoryPage()" [disabled]="historyCurrentPage === totalHistoryPages">
+            Siguiente
+          </button>
         </div>
       </section>
     </ng-container>
@@ -247,13 +406,20 @@
         <p><strong>Tipo:</strong> {{ selectedRequest.tipo_problema }} (Prioridad {{ selectedRequest.prioridad }})</p>
         <p><strong>Vehículo:</strong> {{ selectedRequest.vehiculo_marca }} {{ selectedRequest.vehiculo_modelo }} - Placa: {{ selectedRequest.vehiculo_placa }}</p>
         <p><strong>Ubicación:</strong> {{ selectedRequest.ubicacion || 'Sin descripción' }}</p>
+        <p *ngIf="selectedRequest.tecnico_latitud !== null && selectedRequest.tecnico_longitud !== null">
+          <strong>Técnico en tiempo real:</strong>
+          Lat {{ selectedRequest.tecnico_latitud }}, Lng {{ selectedRequest.tecnico_longitud }}
+          <span *ngIf="selectedRequest.tecnico_ubicacion_actualizada_en">
+            (Act: {{ selectedRequest.tecnico_ubicacion_actualizada_en | date:'shortTime' }})
+          </span>
+        </p>
 
         <div *ngIf="hasSelectedRequestCoordinates; else noMapCoordinates" style="margin-top: 12px;">
           <div id="incident-map" style="height: 220px; width: 100%; border: 1px solid #cbd5e0; border-radius: 10px; overflow: hidden;"></div>
         </div>
         <ng-template #noMapCoordinates>
           <div class="empty-box" style="margin-top: 12px;">
-            No hay coordenadas válidas para mostrar el mapa de esta solicitud.
+            No hay coordenadas válidas para mostrar el mapa en este momento.
           </div>
         </ng-template>
       </div>
@@ -265,17 +431,17 @@
         <h4 *ngIf="getImages(selectedRequest).length > 0">Imágenes adjuntas:</h4>
         <div class="images-list">
           <div class="evidence-item" *ngFor="let img of getImages(selectedRequest)">
-             <a *ngIf="img.url" [href]="img.url" target="_blank">{{ img.url }}</a>
-             <img *ngIf="img.url" [src]="img.url" alt="Evidencia en imagen" style="max-width: 100px; max-height: 100px;" />
+             <a *ngIf="img.url" [href]="getEvidenceUrl(img.url)" target="_blank">{{ getEvidenceUrl(img.url) }}</a>
+             <img *ngIf="img.url" [src]="getEvidenceUrl(img.url)" alt="Evidencia en imagen" style="max-width: 100px; max-height: 100px;" />
           </div>
         </div>
 
         <!-- Audios Transcritos -->
-        <h4 *ngIf="getAudios(selectedRequest).length > 0">Transcripción de Audios:</h4>
+        <h4 *ngIf="getAudios(selectedRequest).length > 0">Audios adjuntos:</h4>
         <div class="audios-list">
           <div class="evidence-item text-box" *ngFor="let audio of getAudios(selectedRequest)">
-            <p><em>Url original:</em> <a *ngIf="audio.url" [href]="audio.url" target="_blank">{{ audio.url }}</a></p>
-            <p><strong>Texto transcrito:</strong> "{{ audio.texto_extraido || '...Procesando transcripción...' }}"</p>
+            <audio *ngIf="getAudioSource(audio)" controls preload="none" [src]="getAudioSource(audio)" style="width: 100%; margin-bottom: 8px;"></audio>
+            <p><em>Url original:</em> <a *ngIf="getAudioSource(audio)" [href]="getAudioSource(audio)" target="_blank">{{ getAudioSource(audio) }}</a></p>
           </div>
         </div>
 
@@ -288,7 +454,7 @@
         </div>
       </div>
 
-      <div class="assignment-section">
+      <div class="assignment-section" *ngIf="!isViewOnlyModal">
         <h3>Asignar Personal y Equipo</h3>
 
         <div class="form-group" style="background: #ebf8ff; border-left: 4px solid #3182ce; padding: 12px 14px; border-radius: 8px;">
@@ -326,7 +492,7 @@
       </div>
     </div>
 
-    <div class="modal-footer">
+    <div class="modal-footer" *ngIf="!isViewOnlyModal">
       <button class="btn-danger" (click)="rechazarSolicitud()" [disabled]="isRequestDecisionInProgress">
         {{ isRejectingRequest ? 'Rechazando...' : 'Rechazar Solicitud' }}
       </button>
@@ -334,6 +500,10 @@
       <button class="btn-primary" (click)="aceptarSolicitud()" [disabled]="isRequestDecisionInProgress || isLoadingDecisionResources || availableTechniciansCount === 0 || availableDecisionVehicles.length === 0 || selectedTransportId === null">
         {{ isAcceptingRequest ? 'Aceptando...' : 'Aceptar Solicitud' }}
       </button>
+    </div>
+
+    <div class="modal-footer" *ngIf="isViewOnlyModal" style="justify-content: flex-end;">
+      <button class="btn-secondary" (click)="closeModal()">Cerrar Detalles</button>
     </div>
 
   </div>
