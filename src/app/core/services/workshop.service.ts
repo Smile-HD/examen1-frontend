@@ -102,6 +102,7 @@ export interface WorkshopServiceCatalogItem {
 export interface WorkshopProfileResponse {
   taller_id: number;
   nombre_taller: string;
+  qr_image_url: string | null;
   ubicacion_texto: string | null;
   latitud: number | null;
   longitud: number | null;
@@ -111,10 +112,18 @@ export interface WorkshopProfileResponse {
 
 export interface WorkshopProfileUpdateRequest {
   nombre_taller: string;
+  qr_image_url?: string | null;
   ubicacion_texto?: string | null;
   latitud?: number | null;
   longitud?: number | null;
   servicios_ofrecidos_ids: number[];
+}
+
+export interface WorkshopQrUploadResponse {
+  taller_id: number;
+  qr_image_url: string;
+  qr_image_url_absolute: string;
+  message: string;
 }
 
 @Injectable({
@@ -194,5 +203,12 @@ export class WorkshopService {
   // Actualizar perfil y servicios ofrecidos por el taller.
   updateProfile(data: WorkshopProfileUpdateRequest): Observable<WorkshopProfileResponse> {
     return this.http.put<WorkshopProfileResponse>(`${this.apiUrl}/perfil`, data, { headers: this.getHeaders() });
+  }
+
+  // Subir imagen QR del taller para usarla en el flujo de pagos.
+  uploadQrImage(file: File): Observable<WorkshopQrUploadResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<WorkshopQrUploadResponse>(`${this.apiUrl}/qr-upload`, formData, { headers: this.getHeaders() });
   }
 }

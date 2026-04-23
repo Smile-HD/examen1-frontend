@@ -47,8 +47,20 @@ export class LoginComponent {
         localStorage.setItem('access_token', res.access_token);
         localStorage.setItem('user_info', JSON.stringify(res));
 
+        const normalizedRoles = Array.isArray(res.roles)
+          ? res.roles.map((role) => String(role).trim().toLowerCase())
+          : [];
+        const isSuperuser = normalizedRoles.some((role) =>
+          ['superusuario', 'superuser', 'admin', 'administrador'].includes(role)
+        ) || String(res.perfil_principal || '').trim().toLowerCase() === 'superusuario';
+
+        if (isSuperuser) {
+          this.router.navigate(['/admin/pagos']);
+          return;
+        }
+
         // Redirigir a panel principal del taller
-        this.router.navigate(['/dashboard']); 
+        this.router.navigate(['/dashboard']);
       },
       error: (err) => {
         this.isAuthenticating = false;

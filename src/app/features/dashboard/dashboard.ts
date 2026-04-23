@@ -19,6 +19,10 @@ import {
   WorkshopVehicleResponse,
   WorkshopVehicleUpdateRequest
 } from '../../core/services/workshop.service';
+import {
+  PaymentListItemResponse,
+  PaymentService
+} from '../../core/services/payment.service';
 
 @Component({
   selector: 'app-dashboard',
@@ -31,10 +35,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private incidentService = inject(IncidentService);
   private workshopService = inject(WorkshopService);
+  private paymentService = inject(PaymentService);
   private cdr = inject(ChangeDetectorRef);
   
   // Pestaña actual
-  currentTab: 'inicio' | 'vehiculos' | 'tecnicos' | 'historial' | 'mi_taller' = 'inicio';
+  currentTab: 'inicio' | 'vehiculos' | 'tecnicos' | 'historial' | 'mi_taller' | 'pagos' = 'inicio';
 
   // Nombre del taller simulado por defecto
   tallerNombre = 'Taller Mecánico';
@@ -58,6 +63,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // Estado para perfil del taller
   workshopProfile: WorkshopProfileResponse | null = null;
   workshopNameInput = '';
+  workshopQrImageUrlInput = '';
+  selectedWorkshopQrFile: File | null = null;
   workshopLocationTextInput = '';
   workshopLatitudeInput = '';
   workshopLongitudeInput = '';
@@ -65,6 +72,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   selectedWorkshopServiceIds: number[] = [];
   isLoadingWorkshopProfile = false;
   isSavingWorkshopProfile = false;
+  isUploadingWorkshopQr = false;
   workshopProfileError: string | null = null;
   workshopProfileSuccess: string | null = null;
 
@@ -129,6 +137,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
   isAcceptingRequest = false;
   isRejectingRequest = false;
 
+  // Estado para pagos
+  workshopPayments: PaymentListItemResponse[] = [];
+  paymentRejectReasonById: Record<number, string> = {};
+  paymentActionError: string | null = null;
+  paymentActionSuccess: string | null = null;
+  isLoadingWorkshopPayments = false;
+  confirmingPaymentId: number | null = null;
+  rejectingPaymentId: number | null = null;
+
   ngOnInit() {
     const userInfo = localStorage.getItem('user_info');
     
@@ -167,7 +184,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.destroyIncidentMap();
   }
 
-  setTab(tab: 'inicio' | 'vehiculos' | 'tecnicos' | 'historial' | 'mi_taller') {
+  setTab(tab: 'inicio' | 'vehiculos' | 'tecnicos' | 'historial' | 'mi_taller' | 'pagos') {
     if (this.isAnyActionInProgress) {
       return;
     }
@@ -213,6 +230,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
       case 'mi_taller':
         this.loadWorkshopProfile();
         break;
+      case 'pagos':
+        this.paymentActionError = null;
+        this.paymentActionSuccess = null;
+        this.loadWorkshopPayments();
+        break;
     }
   }
 
@@ -231,6 +253,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       next: (profile) => {
         this.workshopProfile = profile;
         this.workshopNameInput = profile.nombre_taller || '';
+        this.workshopQrImageUrlInput = profile.qr_image_url || '';
         this.workshopLocationTextInput = profile.ubicacion_texto || '';
         this.workshopLatitudeInput = profile.latitud !== null && profile.latitud !== undefined
           ? String(profile.latitud)
@@ -329,7 +352,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   saveWorkshopProfile() {
-    if (this.isSavingWorkshopProfile) {
+    if (this.isSavingWorkshopProfile || this.isUploadingWorkshopQr) {
       return;
     }
 
@@ -344,6 +367,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     const rawLocation = this.workshopLocationTextInput ?? '';
     const trimmedLocation = String(rawLocation).trim();
+    const currentQrImageUrl = this.workshopProfile?.qr_image_url ?? null;
 
     const latInputText = String(this.workshopLatitudeInput ?? '').trim();
     const lngInputText = String(this.workshopLongitudeInput ?? '').trim();
@@ -369,6 +393,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     const payload: WorkshopProfileUpdateRequest = {
       nombre_taller: trimmedName,
+      qr_image_url: currentQrImageUrl,
       ubicacion_texto: trimmedLocation || null,
       latitud: lat,
       longitud: lng,
@@ -387,6 +412,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.workshopProfile = profile;
         this.workshopProfileSuccess = 'Perfil del taller actualizado correctamente.';
         this.workshopNameInput = profile.nombre_taller || '';
+        this.workshopQrImageUrlInput = profile.qr_image_url || '';
         this.workshopLocationTextInput = profile.ubicacion_texto || '';
         this.workshopLatitudeInput = profile.latitud !== null && profile.latitud !== undefined
           ? String(profile.latitud)
@@ -405,6 +431,67 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.workshopProfileError = err?.name === 'TimeoutError'
           ? 'La actualización tardó demasiado. Intenta nuevamente.'
           : (err?.error?.detail || 'No se pudo guardar el perfil del taller.');
+      }
+    });
+  }
+
+  onWorkshopQrFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files && input.files.length > 0 ? input.files[0] : null;
+    this.selectedWorkshopQrFile = file;
+  }
+
+  uploadWorkshopQrImage(): void {
+    if (this.isUploadingWorkshopQr || !this.selectedWorkshopQrFile) {
+      return;
+    }
+
+    this.workshopProfileError = null;
+    this.workshopProfileSuccess = null;
+    this.isUploadingWorkshopQr = true;
+
+    this.workshopService.uploadQrImage(this.selectedWorkshopQrFile).pipe(
+      timeout(20000),
+      finalize(() => {
+        this.isUploadingWorkshopQr = false;
+        this.requestRender();
+      })
+    ).subscribe({
+      next: (response) => {
+        const nextQrUrl = response.qr_image_url || null;
+        this.workshopQrImageUrlInput = nextQrUrl || '';
+        this.selectedWorkshopQrFile = null;
+        if (this.workshopProfile) {
+          this.workshopProfile = {
+            ...this.workshopProfile,
+            qr_image_url: nextQrUrl,
+          };
+        }
+        this.workshopProfileSuccess = response.message || 'QR del taller actualizado correctamente.';
+      },
+      error: (err) => {
+        this.workshopProfileError = err?.error?.detail || 'No se pudo subir el QR del taller.';
+      }
+    });
+  }
+
+  loadWorkshopPayments(): void {
+    this.paymentActionError = null;
+    this.paymentActionSuccess = null;
+    this.isLoadingWorkshopPayments = true;
+
+    this.paymentService.getWorkshopPayments().pipe(
+      timeout(20000),
+      finalize(() => {
+        this.isLoadingWorkshopPayments = false;
+        this.requestRender();
+      })
+    ).subscribe({
+      next: (response) => {
+        this.workshopPayments = Array.isArray(response?.payments) ? response.payments : [];
+      },
+      error: (err) => {
+        this.paymentActionError = err?.error?.detail || 'No se pudo cargar la lista de pagos.';
       }
     });
   }
@@ -1140,7 +1227,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   get isAnyActionInProgress(): boolean {
-    return this.isVehicleActionInProgress || this.isTechnicianActionInProgress || this.isRequestDecisionInProgress;
+    return this.isVehicleActionInProgress
+      || this.isTechnicianActionInProgress
+      || this.isRequestDecisionInProgress
+      || this.confirmingPaymentId !== null
+      || this.rejectingPaymentId !== null
+      || this.isUploadingWorkshopQr;
   }
 
   private requestRender(): void {
@@ -1489,5 +1581,117 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.technicianMarker = null;
     this.technicianTrailPolyline = null;
     this.technicianTrail = [];
+  }
+
+  // ─── PAGOS ───────────────────────────────────────────────────────
+
+  canManagePayment(item: PaymentListItemResponse): boolean {
+    return item.status === 'verificacion';
+  }
+
+  isPaymentActionInProgress(paymentId: number): boolean {
+    return this.confirmingPaymentId === paymentId || this.rejectingPaymentId === paymentId;
+  }
+
+  confirmPayment(item: PaymentListItemResponse): void {
+    if (this.confirmingPaymentId !== null || this.rejectingPaymentId !== null) {
+      return;
+    }
+
+    if (!this.canManagePayment(item)) {
+      this.paymentActionError = 'Solo puedes confirmar pagos en estado verificación.';
+      this.paymentActionSuccess = null;
+      return;
+    }
+
+    this.paymentActionError = null;
+    this.paymentActionSuccess = null;
+    this.confirmingPaymentId = item.payment_id;
+
+    this.paymentService.confirmPayment({ payment_id: item.payment_id }).pipe(
+      timeout(20000),
+      finalize(() => {
+        this.confirmingPaymentId = null;
+        this.requestRender();
+      })
+    ).subscribe({
+      next: (response) => {
+        this.paymentActionSuccess = response.message || `Pago ${item.payment_id} confirmado correctamente.`;
+        this.refreshIncomingRequests();
+        this.loadHistory();
+        this.loadWorkshopPayments();
+      },
+      error: (err) => {
+        this.paymentActionError = err?.error?.detail || 'No se pudo confirmar el pago.';
+      }
+    });
+  }
+
+  rejectPayment(item: PaymentListItemResponse): void {
+    if (this.confirmingPaymentId !== null || this.rejectingPaymentId !== null) {
+      return;
+    }
+
+    if (!this.canManagePayment(item)) {
+      this.paymentActionError = 'Solo puedes rechazar pagos en estado verificación.';
+      this.paymentActionSuccess = null;
+      return;
+    }
+
+    const reason = (this.paymentRejectReasonById[item.payment_id] || '').trim();
+
+    this.paymentActionError = null;
+    this.paymentActionSuccess = null;
+    this.rejectingPaymentId = item.payment_id;
+
+    this.paymentService.rejectPayment({
+      payment_id: item.payment_id,
+      reason: reason || null,
+    }).pipe(
+      timeout(20000),
+      finalize(() => {
+        this.rejectingPaymentId = null;
+        this.requestRender();
+      })
+    ).subscribe({
+      next: (response) => {
+        this.paymentActionSuccess = response.message || `Pago ${item.payment_id} rechazado correctamente.`;
+        this.loadWorkshopPayments();
+      },
+      error: (err) => {
+        this.paymentActionError = err?.error?.detail || 'No se pudo rechazar el pago.';
+      }
+    });
+  }
+
+  getPaymentStatusLabel(status: string): string {
+    const normalized = (status || '').trim().toLowerCase();
+    if (normalized === 'pendiente') {
+      return 'Pendiente';
+    }
+    if (normalized === 'verificacion') {
+      return 'En verificación';
+    }
+    if (normalized === 'confirmado') {
+      return 'Confirmado';
+    }
+    if (normalized === 'rechazado') {
+      return 'Rechazado';
+    }
+    return status || 'Sin estado';
+  }
+
+  getPaymentProofUrl(item: PaymentListItemResponse): string {
+    const rawUrl = item.proof_image_url_absolute || item.proof_image_url;
+    return this.paymentService.getAbsoluteUrl(rawUrl);
+  }
+
+  getQrDisplayUrl(): string | null {
+    const qrUrl = this.workshopQrImageUrlInput.trim();
+    if (!qrUrl) {
+      return null;
+    }
+    const absolute = this.paymentService.getAbsoluteUrl(qrUrl);
+    return absolute || null;
   }
 }

@@ -14,6 +14,7 @@
       <a [class.active]="currentTab === 'vehiculos'" [class.disabled]="isAnyActionInProgress" (click)="setTab('vehiculos')">MIS VEHÍCULOS</a>
       <a [class.active]="currentTab === 'tecnicos'" [class.disabled]="isAnyActionInProgress" (click)="setTab('tecnicos')">MIS TÉCNICOS</a>
       <a [class.active]="currentTab === 'mi_taller'" [class.disabled]="isAnyActionInProgress" (click)="setTab('mi_taller')">MI TALLER</a>
+      <a [class.active]="currentTab === 'pagos'" [class.disabled]="isAnyActionInProgress" (click)="setTab('pagos')">PAGOS</a>
       <a [class.active]="currentTab === 'historial'" [class.disabled]="isAnyActionInProgress" (click)="setTab('historial')">HISTORIAL</a>
     </nav>
     
@@ -47,6 +48,10 @@
       <div class="welcome-text" *ngIf="currentTab === 'mi_taller'">
         <h1>Mi Taller</h1>
         <p>Actualiza tus datos, servicios ofrecidos y ubicación del taller.</p>
+      </div>
+      <div class="welcome-text" *ngIf="currentTab === 'pagos'">
+        <h1>Verificación de Pagos</h1>
+        <p>Revisa y confirma los comprobantes de pago enviados por los clientes.</p>
       </div>
     </header>
 
@@ -182,6 +187,38 @@
                 placeholder="Ej. -63.182140"
                 [disabled]="isSavingWorkshopProfile"
               />
+            </div>
+            
+            <div class="form-group">
+              <label>Código QR para Pagos</label>
+              <div class="qr-upload-container">
+                <div class="qr-preview" *ngIf="getQrDisplayUrl()">
+                  <img [src]="getQrDisplayUrl()" alt="QR del Taller" />
+                </div>
+                <div class="qr-preview-empty" *ngIf="!getQrDisplayUrl()">
+                  <p>Aún no subiste un QR para pagos.</p>
+                </div>
+                <div class="qr-upload-actions">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    (change)="onWorkshopQrFileSelected($event)"
+                    [disabled]="isSavingWorkshopProfile || isUploadingWorkshopQr"
+                  />
+                  <button
+                    class="btn-primary"
+                    type="button"
+                    (click)="uploadWorkshopQrImage()"
+                    [disabled]="isSavingWorkshopProfile || isUploadingWorkshopQr || !selectedWorkshopQrFile"
+                    style="margin-top: 10px;"
+                  >
+                    {{ isUploadingWorkshopQr ? 'Subiendo QR...' : 'Subir imagen QR' }}
+                  </button>
+                  <small style="display: block; margin-top: 6px; color: #4a5568;">
+                    El cliente verá exactamente este QR al crear su pago. Formatos recomendados: PNG/JPG.
+                  </small>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -384,6 +421,93 @@
           <button class="pagination-btn" (click)="goToNextHistoryPage()" [disabled]="historyCurrentPage === totalHistoryPages">
             Siguiente
           </button>
+        </div>
+      </section>
+    </ng-container>
+
+    <!-- Pestaña de Pagos -->
+    <ng-container *ngIf="currentTab === 'pagos'">
+      <section class="payments-section">
+        <div class="payments-header" style="display: flex; flex-direction: column; gap: 10px;">
+          <p style="margin: 0; color: #2d3748;">
+            Aquí verás todos los pagos de tu taller. Revisa el comprobante y confirma o rechaza manualmente los pagos en verificación.
+          </p>
+        </div>
+
+        <div *ngIf="isLoadingWorkshopPayments" class="empty-box" style="margin-top: 12px;">
+          Cargando pagos...
+        </div>
+
+        <div *ngIf="!isLoadingWorkshopPayments && workshopPayments.length === 0" class="empty-box" style="margin-top: 12px;">
+          No hay pagos registrados para este taller.
+        </div>
+
+        <div *ngIf="workshopPayments.length > 0" style="display: grid; gap: 14px; margin-top: 12px;">
+          <div class="payment-card" *ngFor="let item of workshopPayments">
+            <div class="payment-info" style="display: grid; gap: 10px;">
+              <div class="payment-header" style="display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+                <h4 style="margin: 0;">Pago #{{ item.payment_id }} - {{ getPaymentStatusLabel(item.status) }}</h4>
+                <small style="color: #4a5568;">{{ item.created_at | date:'medium' }}</small>
+              </div>
+
+              <div class="payment-details" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px;">
+                <p style="margin: 0;"><strong>Referencia:</strong> {{ item.reference }}</p>
+                <p style="margin: 0;"><strong>Incidente:</strong> #{{ item.incident_id }}</p>
+                <p style="margin: 0;"><strong>Cliente:</strong> {{ item.user_name || ('ID ' + item.user_id) }}</p>
+                <p style="margin: 0;"><strong>Monto:</strong> Bs. {{ item.amount | number:'1.2-2' }}</p>
+                <p style="margin: 0;"><strong>Comisión:</strong> Bs. {{ item.commission | number:'1.2-2' }}</p>
+                <p style="margin: 0;"><strong>Neto taller:</strong> Bs. {{ item.net_amount_to_workshop | number:'1.2-2' }}</p>
+              </div>
+
+              <div *ngIf="getPaymentProofUrl(item)" style="display: grid; gap: 8px;">
+                <a [href]="getPaymentProofUrl(item)" target="_blank" rel="noopener noreferrer">Ver comprobante en tamaño completo</a>
+                <img
+                  [src]="getPaymentProofUrl(item)"
+                  alt="Comprobante de pago"
+                  style="max-width: 260px; border: 1px solid #cbd5e0; border-radius: 8px;"
+                />
+              </div>
+
+              <div *ngIf="!getPaymentProofUrl(item)" class="empty-box" style="margin: 0;">
+                Este pago aún no tiene comprobante subido.
+              </div>
+
+              <div style="display: grid; gap: 8px; max-width: 460px;">
+                <textarea
+                  rows="2"
+                  placeholder="Motivo de rechazo (opcional)"
+                  [ngModel]="paymentRejectReasonById[item.payment_id] || ''"
+                  (ngModelChange)="paymentRejectReasonById[item.payment_id] = $event"
+                  [disabled]="!canManagePayment(item) || isPaymentActionInProgress(item.payment_id)"
+                ></textarea>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                  <button
+                    class="btn-primary"
+                    type="button"
+                    (click)="confirmPayment(item)"
+                    [disabled]="!canManagePayment(item) || isPaymentActionInProgress(item.payment_id)"
+                  >
+                    {{ confirmingPaymentId === item.payment_id ? 'Confirmando...' : 'Confirmar pago' }}
+                  </button>
+                  <button
+                    class="btn-danger"
+                    type="button"
+                    (click)="rejectPayment(item)"
+                    [disabled]="!canManagePayment(item) || isPaymentActionInProgress(item.payment_id)"
+                  >
+                    {{ rejectingPaymentId === item.payment_id ? 'Rechazando...' : 'Rechazar pago' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div *ngIf="paymentActionSuccess" class="empty-box" style="margin-top: 12px; border-color: #38a169; color: #276749;">
+          {{ paymentActionSuccess }}
+        </div>
+        <div *ngIf="paymentActionError" class="error-box" style="margin-top: 12px;">
+          {{ paymentActionError }}
         </div>
       </section>
     </ng-container>
