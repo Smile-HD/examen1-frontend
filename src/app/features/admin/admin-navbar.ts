@@ -16,10 +16,10 @@ import { Router, RouterModule } from '@angular/router';
         <a routerLink="/admin/pagos" routerLinkActive="active">Pagos</a>
         <a routerLink="/admin/usuarios" routerLinkActive="active">Usuarios</a>
         <a routerLink="/admin/comisiones" routerLinkActive="active">Comisiones</a>
+        <a routerLink="/admin/reportes" routerLinkActive="active">Reportes</a>
       </div>
 
       <div class="nav-actions">
-        <button class="btn-secondary" type="button" (click)="refresh()">Actualizar</button>
         <button class="btn-danger" type="button" (click)="logout()">Cerrar sesión</button>
       </div>
     </nav>
@@ -31,37 +31,126 @@ import { Router, RouterModule } from '@angular/router';
         display: flex;
         justify-content: space-between;
         align-items: center;
-        gap: 12px;
-        padding: 12px 16px;
-        background: linear-gradient(90deg, #ffffff 0%, #f7fafc 100%);
-        border-radius: 10px;
-        border: 1px solid #e2e8f0;
-        margin-bottom: 14px;
+        gap: 16px;
+        padding: 16px 24px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 16px;
+        box-shadow: 0 4px 20px rgba(102, 126, 234, 0.25);
+        margin-bottom: 24px;
+        transition: all 0.3s ease;
       }
 
-      .logo { font-weight: 700; color: #1a202c; }
+      .admin-navbar:hover {
+        box-shadow: 0 6px 28px rgba(102, 126, 234, 0.35);
+        transform: translateY(-2px);
+      }
 
-      .nav-links { display:flex; gap: 12px; align-items: center; }
+      .logo { 
+        font-weight: 700; 
+        color: #ffffff;
+        font-size: 1.15rem;
+        letter-spacing: 0.3px;
+      }
+
+      .nav-links { 
+        display:flex; 
+        gap: 8px; 
+        align-items: center; 
+      }
+      
       .nav-links a {
         text-decoration: none;
-        padding: 8px 12px;
-        border-radius: 8px;
-        color: #2b6cb0;
+        padding: 10px 18px;
+        border-radius: 10px;
+        color: rgba(255, 255, 255, 0.85);
         font-weight: 600;
+        font-size: 0.95rem;
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
       }
 
-      .nav-links a.active { background: #ebf8ff; box-shadow: 0 2px 6px rgba(66,153,225,0.08); }
+      .nav-links a::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(255, 255, 255, 0.1);
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+      }
 
-      .nav-actions { display:flex; gap: 8px; align-items:center; }
+      .nav-links a:hover::before {
+        transform: translateX(0);
+      }
 
-      .btn-secondary, .btn-danger { border: none; border-radius: 8px; padding: 8px 12px; color: #fff; cursor:pointer; }
-      .btn-secondary { background: linear-gradient(135deg,#4299e1 0%,#3182ce 100%); }
-      .btn-danger { background: #c53030; }
+      .nav-links a:hover {
+        color: #ffffff;
+      }
+
+      .nav-links a.active { 
+        background: rgba(255, 255, 255, 0.2);
+        color: #ffffff;
+        box-shadow: 0 2px 12px rgba(255, 255, 255, 0.15);
+        backdrop-filter: blur(10px);
+      }
+
+      .nav-actions { 
+        display:flex; 
+        gap: 10px; 
+        align-items:center; 
+      }
+
+      .btn-secondary, .btn-danger { 
+        border: none; 
+        border-radius: 10px; 
+        padding: 10px 18px; 
+        color: #fff; 
+        cursor:pointer;
+        font-weight: 600;
+        font-size: 0.9rem;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      }
+      
+      .btn-secondary { 
+        background: rgba(255, 255, 255, 0.25);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+      }
+
+      .btn-secondary:hover {
+        background: rgba(255, 255, 255, 0.35);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      }
+      
+      .btn-danger { 
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      }
+
+      .btn-danger:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(245, 87, 108, 0.4);
+      }
 
       @media (max-width:720px){
-        .admin-navbar { flex-direction: column; align-items: flex-start; }
-        .nav-links{ width:100%; }
-        .nav-actions{ width:100%; display:flex; justify-content:space-between; }
+        .admin-navbar { 
+          flex-direction: column; 
+          align-items: flex-start;
+          padding: 16px;
+        }
+        .nav-links{ 
+          width:100%;
+          flex-wrap: wrap;
+        }
+        .nav-actions{ 
+          width:100%; 
+          display:flex; 
+          justify-content:space-between; 
+        }
       }
     `
   ]

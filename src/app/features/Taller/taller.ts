@@ -21,15 +21,18 @@ import {
 } from '../../core/services/workshop.service';
 import {
   PaymentListItemResponse,
-  PaymentService
+  PaymentService,
+  WorkshopCommissionSummaryResponse,
+  CommissionPaymentListItemResponse,
+  CommissionPaymentListResponse
 } from '../../core/services/payment.service';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
   imports: [CommonModule, FormsModule],
-  templateUrl: './dashboard.html',
-  styleUrls: ['./dashboard.scss']
+  templateUrl: './taller.html',
+  styleUrls: ['./taller.scss']
 })
 export class DashboardComponent implements OnInit, OnDestroy {
   private router = inject(Router);
@@ -145,6 +148,21 @@ export class DashboardComponent implements OnInit, OnDestroy {
   isLoadingWorkshopPayments = false;
   confirmingPaymentId: number | null = null;
   rejectingPaymentId: number | null = null;
+  showPaymentHistory = false;
+
+  // Estado para comisiones
+  commissionSummary: WorkshopCommissionSummaryResponse | null = null;
+  commissionPayments: CommissionPaymentListItemResponse[] = [];
+  platformQrUrl: string | null = null;
+  showCommissionPaymentModal = false;
+  selectedCommissionProofFile: File | null = null;
+  isLoadingCommissionSummary = false;
+  isCreatingCommissionPayment = false;
+  isUploadingCommissionProof = false;
+  commissionError: string | null = null;
+  commissionSuccess: string | null = null;
+  createdCommissionPaymentId: number | null = null;
+  showCommissionHistory = false;
 
   ngOnInit() {
     const userInfo = localStorage.getItem('user_info');
@@ -233,7 +251,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
       case 'pagos':
         this.paymentActionError = null;
         this.paymentActionSuccess = null;
+        this.commissionError = null;
+        this.commissionSuccess = null;
         this.loadWorkshopPayments();
+        this.loadCommissionSummary();
         break;
     }
   }
@@ -458,6 +479,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       })
     ).subscribe({
       next: (response) => {
+        // Usar la URL relativa para guardar en el perfil
         const nextQrUrl = response.qr_image_url || null;
         this.workshopQrImageUrlInput = nextQrUrl || '';
         this.selectedWorkshopQrFile = null;
@@ -468,8 +490,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
           };
         }
         this.workshopProfileSuccess = response.message || 'QR del taller actualizado correctamente.';
+        console.log('QR subido exitosamente:', {
+          relative: response.qr_image_url,
+          absolute: response.qr_image_url_absolute,
+          displayUrl: this.getQrDisplayUrl()
+        });
       },
       error: (err) => {
+        console.error('Error subiendo QR:', err);
         this.workshopProfileError = err?.error?.detail || 'No se pudo subir el QR del taller.';
       }
     });
@@ -1692,6 +1720,231 @@ export class DashboardComponent implements OnInit, OnDestroy {
       return null;
     }
     const absolute = this.paymentService.getAbsoluteUrl(qrUrl);
+    console.log('QR URL:', qrUrl, '-> Absolute:', absolute); // Debug
     return absolute || null;
+  }
+
+  onQrImageError(event: Event): void {
+    console.error('Error cargando imagen QR:', this.workshopQrImageUrlInput);
+    const img = event.target as HTMLImageElement;
+    img.style.display = 'none';
+    this.workshopProfileError = 'No se pudo cargar la imagen del QR. Verifica que la URL sea correcta.';
+  }
+
+  onQrImageLoad(): void {
+    console.log('Imagen QR cargada exitosamente');
+    this.workshopProfileError = null;
+  }
+
+  // ─── COMISIONES ───────────────────────────────────────────────────────
+
+  loadCommissionSummary(): void {
+    this.commissionError = null;
+    this.isLoadingCommissionSummary = true;
+
+    this.paymentService.getWorkshopCommissionSummary().pipe(
+      timeout(20000),
+      finalize(() => {
+        this.isLoadingCommissionSummary = false;
+        this.requestRender();
+      })
+    ).subscribe({
+      next: (response) => {
+        this.commissionSummary = response;
+        this.platformQrUrl = response.qr_image_url || null;
+        this.loadCommissionPayments();
+      },
+      error: (err) => {
+        this.commissionError = err?.error?.detail || 'No se pudo cargar el resumen de comisiones.';
+      }
+    });
+  }
+
+  loadCommissionPayments(): void {
+    this.paymentService.getWorkshopCommissionPayments().pipe(
+      timeout(20000),
+      finalize(() => {
+        this.requestRender();
+      })
+    ).subscribe({
+      next: (response) => {
+        this.commissionPayments = Array.isArray(response?.payments) ? response.payments : [];
+      },
+      error: (err) => {
+        console.error('Error loading commission payments:', err);
+      }
+    });
+  }
+
+  openCommissionPaymentModal(): void {
+    if (!this.platformQrUrl) {
+      this.commissionError = 'La plataforma aún no ha configurado un QR para pagos de comisión.';
+      return;
+    }
+
+    if (!this.commissionSummary || this.commissionSummary.pending_commission <= 0) {
+      this.commissionError = 'No tienes comisiones pendientes por pagar.';
+      return;
+    }
+
+    this.showCommissionPaymentModal = true;
+    this.commissionError = null;
+    this.commissionSuccess = null;
+    this.selectedCommissionProofFile = null;
+    this.createdCommissionPaymentId = null;
+  }
+
+  closeCommissionPaymentModal(): void {
+    if (this.isCreatingCommissionPayment || this.isUploadingCommissionProof) {
+      return;
+    }
+    this.showCommissionPaymentModal = false;
+    this.selectedCommissionProofFile = null;
+    this.createdCommissionPaymentId = null;
+    this.commissionError = null;
+    this.commissionSuccess = null;
+  }
+
+  onCommissionProofFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files && input.files.length > 0 ? input.files[0] : null;
+    this.selectedCommissionProofFile = file;
+  }
+
+  createCommissionPayment(): void {
+    if (this.isCreatingCommissionPayment || this.isUploadingCommissionProof) {
+      return;
+    }
+
+    if (!this.commissionSummary || this.commissionSummary.pending_commission <= 0) {
+      this.commissionError = 'No hay comisión pendiente para pagar.';
+      return;
+    }
+
+    this.commissionError = null;
+    this.commissionSuccess = null;
+    this.isCreatingCommissionPayment = true;
+
+    this.paymentService.createCommissionPayment({
+      amount: this.commissionSummary.pending_commission
+    }).pipe(
+      timeout(20000),
+      finalize(() => {
+        this.isCreatingCommissionPayment = false;
+        this.requestRender();
+      })
+    ).subscribe({
+      next: (response) => {
+        this.createdCommissionPaymentId = response.payment_id;
+        this.commissionSuccess = response.message || 'Pago de comisión creado. Ahora sube tu comprobante.';
+      },
+      error: (err) => {
+        this.commissionError = err?.error?.detail || 'No se pudo crear el pago de comisión.';
+      }
+    });
+  }
+
+  uploadCommissionProof(): void {
+    if (this.isCreatingCommissionPayment || this.isUploadingCommissionProof) {
+      return;
+    }
+
+    if (!this.createdCommissionPaymentId) {
+      this.commissionError = 'Primero debes crear el pago de comisión.';
+      return;
+    }
+
+    if (!this.selectedCommissionProofFile) {
+      this.commissionError = 'Selecciona un comprobante de pago antes de subir.';
+      return;
+    }
+
+    this.commissionError = null;
+    this.commissionSuccess = null;
+    this.isUploadingCommissionProof = true;
+
+    this.paymentService.uploadCommissionProof(
+      this.createdCommissionPaymentId,
+      this.selectedCommissionProofFile
+    ).pipe(
+      timeout(30000),
+      finalize(() => {
+        this.isUploadingCommissionProof = false;
+        this.requestRender();
+      })
+    ).subscribe({
+      next: (response) => {
+        this.commissionSuccess = response.message || 'Comprobante subido correctamente. Esperando validación del administrador.';
+        this.selectedCommissionProofFile = null;
+        this.loadCommissionSummary();
+        setTimeout(() => {
+          this.closeCommissionPaymentModal();
+        }, 2000);
+      },
+      error: (err) => {
+        this.commissionError = err?.error?.detail || 'No se pudo subir el comprobante de comisión.';
+      }
+    });
+  }
+
+  getCommissionPaymentStatusLabel(status: string): string {
+    const normalized = (status || '').trim().toLowerCase();
+    if (normalized === 'pendiente') {
+      return 'Pendiente';
+    }
+    if (normalized === 'verificacion') {
+      return 'En verificación';
+    }
+    if (normalized === 'confirmado') {
+      return 'Confirmado';
+    }
+    if (normalized === 'rechazado') {
+      return 'Rechazado';
+    }
+    return status || 'Sin estado';
+  }
+
+  getCommissionProofUrl(payment: CommissionPaymentListItemResponse): string {
+    const rawUrl = payment.proof_image_url_absolute || payment.proof_image_url;
+    return this.paymentService.getAbsoluteUrl(rawUrl);
+  }
+
+  getPlatformQrDisplayUrl(): string | null {
+    if (!this.platformQrUrl) {
+      return null;
+    }
+    return this.paymentService.getAbsoluteUrl(this.platformQrUrl);
+  }
+
+  get activeCommissionPayments(): CommissionPaymentListItemResponse[] {
+    return this.commissionPayments.filter(
+      (payment) => payment.status === 'pendiente' || payment.status === 'verificacion'
+    );
+  }
+
+  get historicalCommissionPayments(): CommissionPaymentListItemResponse[] {
+    return this.commissionPayments.filter(
+      (payment) => payment.status === 'confirmado' || payment.status === 'rechazado'
+    );
+  }
+
+  toggleCommissionHistory(): void {
+    this.showCommissionHistory = !this.showCommissionHistory;
+  }
+
+  get activePayments(): PaymentListItemResponse[] {
+    return this.workshopPayments.filter(
+      (payment) => payment.status === 'pendiente' || payment.status === 'verificacion'
+    );
+  }
+
+  get historicalPayments(): PaymentListItemResponse[] {
+    return this.workshopPayments.filter(
+      (payment) => payment.status === 'confirmado' || payment.status === 'rechazado'
+    );
+  }
+
+  togglePaymentHistory(): void {
+    this.showPaymentHistory = !this.showPaymentHistory;
   }
 }

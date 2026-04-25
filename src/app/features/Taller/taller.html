@@ -188,20 +188,30 @@
                 [disabled]="isSavingWorkshopProfile"
               />
             </div>
-            
-            <div class="form-group">
+          </div>
+
+          <!-- Layout de dos columnas para QR y Servicios -->
+          <div class="qr-services-layout">
+            <!-- Columna izquierda: QR -->
+            <div class="form-group qr-column">
               <label>Código QR para Pagos</label>
               <div class="qr-upload-container">
                 <div class="qr-preview" *ngIf="getQrDisplayUrl()">
-                  <img [src]="getQrDisplayUrl()" alt="QR del Taller" />
+                  <img 
+                    [src]="getQrDisplayUrl()" 
+                    alt="QR del Taller"
+                    (error)="onQrImageError($event)"
+                    (load)="onQrImageLoad()"
+                  />
                 </div>
                 <div class="qr-preview-empty" *ngIf="!getQrDisplayUrl()">
-                  <p>Aún no subiste un QR para pagos.</p>
+                  <p>Aún no has subido un código QR para pagos.</p>
                 </div>
                 <div class="qr-upload-actions">
                   <input
+                    #qrFileInput
                     type="file"
-                    accept="image/*"
+                    accept="image/png,image/jpeg,image/jpg"
                     (change)="onWorkshopQrFileSelected($event)"
                     [disabled]="isSavingWorkshopProfile || isUploadingWorkshopQr"
                   />
@@ -210,46 +220,55 @@
                     type="button"
                     (click)="uploadWorkshopQrImage()"
                     [disabled]="isSavingWorkshopProfile || isUploadingWorkshopQr || !selectedWorkshopQrFile"
-                    style="margin-top: 10px;"
                   >
                     {{ isUploadingWorkshopQr ? 'Subiendo QR...' : 'Subir imagen QR' }}
                   </button>
-                  <small style="display: block; margin-top: 6px; color: #4a5568;">
-                    El cliente verá exactamente este QR al crear su pago. Formatos recomendados: PNG/JPG.
+                  <small>
+                    El cliente verá exactamente este QR al crear su pago. 
+                    <strong>Formatos aceptados:</strong> PNG, JPG, JPEG (máx. 10 MB).
                   </small>
+                  <small *ngIf="workshopProfileSuccess" class="success-text">
+                    {{ workshopProfileSuccess }}
+                  </small>
+                  <small *ngIf="workshopProfileError" class="error-text">
+                    {{ workshopProfileError }}
+                  </small>
+                </div>
+              </div>
+            </div>
+
+            <!-- Columna derecha: Servicios -->
+            <div class="services-column">
+              <div class="services-panel">
+                <h3>Servicios que Ofrece el Taller</h3>
+                <p>Marca todo lo que tu taller puede resolver para mejorar el matching de emergencias.</p>
+
+                <div *ngIf="workshopServiceCatalog.length === 0" class="empty-box">
+                  No hay servicios disponibles en el catálogo por ahora.
+                </div>
+
+                <div class="services-grid" *ngIf="workshopServiceCatalog.length > 0">
+                  <label class="service-item" *ngFor="let svc of workshopServiceCatalog">
+                    <input
+                      type="checkbox"
+                      [checked]="isWorkshopServiceSelected(svc.id)"
+                      (change)="toggleWorkshopService(svc.id, $any($event.target).checked)"
+                      [disabled]="isSavingWorkshopProfile"
+                    />
+                    <span>{{ svc.nombre }}</span>
+                  </label>
                 </div>
               </div>
             </div>
           </div>
 
-          <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;">
+          <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px;">
             <button class="btn-secondary" (click)="useCurrentWorkshopLocation()" [disabled]="isSavingWorkshopProfile">
               Usar Mi Ubicación Actual
             </button>
             <button class="btn-primary" (click)="saveWorkshopProfile()" [disabled]="isSavingWorkshopProfile">
               {{ isSavingWorkshopProfile ? 'Guardando...' : 'Guardar Perfil' }}
             </button>
-          </div>
-
-          <div class="services-panel">
-            <h3>Servicios que Ofrece el Taller</h3>
-            <p>Marca todo lo que tu taller puede resolver para mejorar el matching de emergencias.</p>
-
-            <div *ngIf="workshopServiceCatalog.length === 0" class="empty-box">
-              No hay servicios disponibles en el catálogo por ahora.
-            </div>
-
-            <div class="services-grid" *ngIf="workshopServiceCatalog.length > 0">
-              <label class="service-item" *ngFor="let svc of workshopServiceCatalog">
-                <input
-                  type="checkbox"
-                  [checked]="isWorkshopServiceSelected(svc.id)"
-                  (change)="toggleWorkshopService(svc.id, $any($event.target).checked)"
-                  [disabled]="isSavingWorkshopProfile"
-                />
-                <span>{{ svc.nombre }}</span>
-              </label>
-            </div>
           </div>
         </div>
       </section>
@@ -438,12 +457,13 @@
           Cargando pagos...
         </div>
 
-        <div *ngIf="!isLoadingWorkshopPayments && workshopPayments.length === 0" class="empty-box" style="margin-top: 12px;">
+        <div *ngIf="!isLoadingWorkshopPayments && activePayments.length === 0 && historicalPayments.length === 0" class="empty-box" style="margin-top: 12px;">
           No hay pagos registrados para este taller.
         </div>
 
-        <div *ngIf="workshopPayments.length > 0" style="display: grid; gap: 14px; margin-top: 12px;">
-          <div class="payment-card" *ngFor="let item of workshopPayments">
+        <div *ngIf="activePayments.length > 0" style="display: grid; gap: 14px; margin-top: 12px;">
+          <h3 style="margin: 0 0 12px 0;">Pagos Pendientes de Verificación</h3>
+          <div class="payment-card" *ngFor="let item of activePayments">
             <div class="payment-info" style="display: grid; gap: 10px;">
               <div class="payment-header" style="display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
                 <h4 style="margin: 0;">Pago #{{ item.payment_id }} - {{ getPaymentStatusLabel(item.status) }}</h4>
@@ -503,16 +523,269 @@
           </div>
         </div>
 
+        <!-- Historial de pagos confirmados/rechazados -->
+        <div *ngIf="historicalPayments.length > 0" style="margin-top: 24px;">
+          <button 
+            class="btn-secondary" 
+            (click)="togglePaymentHistory()"
+            style="width: 100%; display: flex; justify-content: space-between; align-items: center;"
+          >
+            <span>Historial de Pagos ({{ historicalPayments.length }})</span>
+            <span>{{ showPaymentHistory ? '▲' : '▼' }}</span>
+          </button>
+
+          <div *ngIf="showPaymentHistory" style="display: grid; gap: 14px; margin-top: 12px;">
+            <div class="payment-card" *ngFor="let item of historicalPayments">
+              <div class="payment-info" style="display: grid; gap: 10px;">
+                <div class="payment-header" style="display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+                  <h4 style="margin: 0;">Pago #{{ item.payment_id }} - {{ getPaymentStatusLabel(item.status) }}</h4>
+                  <small style="color: #4a5568;">{{ item.created_at | date:'medium' }}</small>
+                </div>
+
+                <div class="payment-details" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px;">
+                  <p style="margin: 0;"><strong>Referencia:</strong> {{ item.reference }}</p>
+                  <p style="margin: 0;"><strong>Incidente:</strong> #{{ item.incident_id }}</p>
+                  <p style="margin: 0;"><strong>Cliente:</strong> {{ item.user_name || ('ID ' + item.user_id) }}</p>
+                  <p style="margin: 0;"><strong>Monto:</strong> Bs. {{ item.amount | number:'1.2-2' }}</p>
+                  <p style="margin: 0;"><strong>Comisión:</strong> Bs. {{ item.commission | number:'1.2-2' }}</p>
+                  <p style="margin: 0;"><strong>Neto taller:</strong> Bs. {{ item.net_amount_to_workshop | number:'1.2-2' }}</p>
+                </div>
+
+                <div *ngIf="getPaymentProofUrl(item)" style="display: grid; gap: 8px;">
+                  <a [href]="getPaymentProofUrl(item)" target="_blank" rel="noopener noreferrer">Ver comprobante en tamaño completo</a>
+                  <img
+                    [src]="getPaymentProofUrl(item)"
+                    alt="Comprobante de pago"
+                    style="max-width: 260px; border: 1px solid #cbd5e0; border-radius: 8px;"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div *ngIf="paymentActionSuccess" class="empty-box" style="margin-top: 12px; border-color: #38a169; color: #276749;">
           {{ paymentActionSuccess }}
         </div>
         <div *ngIf="paymentActionError" class="error-box" style="margin-top: 12px;">
           {{ paymentActionError }}
         </div>
+
+        <!-- SECCIÓN DE COMISIONES -->
+        <div style="margin-top: 32px; padding-top: 24px; border-top: 2px solid #e2e8f0;">
+          <h2 style="margin-bottom: 16px;">Comisiones a la Plataforma</h2>
+          <p style="margin-bottom: 16px; color: #4a5568;">
+            Aquí puedes ver el monto de comisión pendiente que debes pagar a la plataforma y gestionar tus pagos de comisión.
+          </p>
+
+          <div *ngIf="isLoadingCommissionSummary" class="empty-box">
+            Cargando resumen de comisiones...
+          </div>
+
+          <div *ngIf="!isLoadingCommissionSummary && commissionSummary" style="display: grid; gap: 16px;">
+            <!-- Resumen de comisión -->
+            <div style="background: #f7fafc; border: 1px solid #cbd5e0; border-radius: 8px; padding: 16px;">
+              <h3 style="margin: 0 0 12px 0;">Resumen de Comisión</h3>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                <div>
+                  <p style="margin: 0; color: #718096; font-size: 14px;">Taller</p>
+                  <p style="margin: 4px 0 0 0; font-size: 18px; font-weight: 600; color: #2d3748;">
+                    {{ commissionSummary.taller_name }}
+                  </p>
+                </div>
+                <div>
+                  <p style="margin: 0; color: #718096; font-size: 14px;">Comisión Pendiente</p>
+                  <p style="margin: 4px 0 0 0; font-size: 24px; font-weight: 600; color: #e53e3e;">
+                    Bs. {{ commissionSummary.pending_commission | number:'1.2-2' }}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                class="btn-primary"
+                style="margin-top: 16px;"
+                (click)="openCommissionPaymentModal()"
+                [disabled]="!platformQrUrl || !commissionSummary || commissionSummary.pending_commission <= 0"
+              >
+                Pagar Comisión
+              </button>
+
+              <div *ngIf="!platformQrUrl" class="empty-box" style="margin-top: 12px;">
+                La plataforma aún no ha configurado un QR para pagos de comisión.
+              </div>
+
+              <div *ngIf="commissionSummary.pending_commission <= 0" class="empty-box" style="margin-top: 12px; border-color: #38a169; color: #276749;">
+                No tienes comisiones pendientes. Estás al día con tus pagos.
+              </div>
+            </div>
+
+            <!-- Historial de pagos de comisión -->
+            <div *ngIf="activeCommissionPayments.length > 0">
+              <h3 style="margin: 0 0 12px 0;">Pagos de Comisión Activos</h3>
+              <div style="display: grid; gap: 12px;">
+                <div class="payment-card" *ngFor="let payment of activeCommissionPayments">
+                  <div style="display: grid; gap: 10px;">
+                    <div style="display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+                      <h4 style="margin: 0;">Pago #{{ payment.payment_id }} - {{ getCommissionPaymentStatusLabel(payment.status) }}</h4>
+                      <small style="color: #4a5568;">{{ payment.created_at | date:'medium' }}</small>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px;">
+                      <p style="margin: 0;"><strong>Monto:</strong> Bs. {{ payment.amount | number:'1.2-2' }}</p>
+                      <p style="margin: 0;"><strong>Estado:</strong> {{ getCommissionPaymentStatusLabel(payment.status) }}</p>
+                    </div>
+
+                    <div *ngIf="getCommissionProofUrl(payment)" style="display: grid; gap: 8px;">
+                      <a [href]="getCommissionProofUrl(payment)" target="_blank" rel="noopener noreferrer">Ver comprobante</a>
+                      <img
+                        [src]="getCommissionProofUrl(payment)"
+                        alt="Comprobante de comisión"
+                        style="max-width: 260px; border: 1px solid #cbd5e0; border-radius: 8px;"
+                      />
+                    </div>
+
+                    <div *ngIf="payment.rejection_reason" style="background: #fff5f5; border: 1px solid #feb2b2; border-radius: 6px; padding: 10px;">
+                      <p style="margin: 0; color: #c53030;"><strong>Motivo de rechazo:</strong> {{ payment.rejection_reason }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div *ngIf="activeCommissionPayments.length === 0 && commissionPayments.length === 0" class="empty-box">
+              No has realizado pagos de comisión aún.
+            </div>
+
+            <!-- Historial de pagos confirmados/rechazados -->
+            <div *ngIf="historicalCommissionPayments.length > 0" style="margin-top: 16px;">
+              <button 
+                class="btn-secondary" 
+                (click)="toggleCommissionHistory()"
+                style="width: 100%; display: flex; justify-content: space-between; align-items: center;"
+              >
+                <span>Historial de Pagos ({{ historicalCommissionPayments.length }})</span>
+                <span>{{ showCommissionHistory ? '▲' : '▼' }}</span>
+              </button>
+
+              <div *ngIf="showCommissionHistory" style="display: grid; gap: 12px; margin-top: 12px;">
+                <div class="payment-card" *ngFor="let payment of historicalCommissionPayments">
+                  <div style="display: grid; gap: 10px;">
+                    <div style="display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+                      <h4 style="margin: 0;">Pago #{{ payment.payment_id }} - {{ getCommissionPaymentStatusLabel(payment.status) }}</h4>
+                      <small style="color: #4a5568;">{{ payment.created_at | date:'medium' }}</small>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px;">
+                      <p style="margin: 0;"><strong>Monto:</strong> Bs. {{ payment.amount | number:'1.2-2' }}</p>
+                      <p style="margin: 0;"><strong>Estado:</strong> {{ getCommissionPaymentStatusLabel(payment.status) }}</p>
+                      <p *ngIf="payment.confirmed_at" style="margin: 0;"><strong>Confirmado:</strong> {{ payment.confirmed_at | date:'short' }}</p>
+                    </div>
+
+                    <div *ngIf="getCommissionProofUrl(payment)" style="display: grid; gap: 8px;">
+                      <a [href]="getCommissionProofUrl(payment)" target="_blank" rel="noopener noreferrer">Ver comprobante</a>
+                      <img
+                        [src]="getCommissionProofUrl(payment)"
+                        alt="Comprobante de comisión"
+                        style="max-width: 260px; border: 1px solid #cbd5e0; border-radius: 8px;"
+                      />
+                    </div>
+
+                    <div *ngIf="payment.rejection_reason" style="background: #fff5f5; border: 1px solid #feb2b2; border-radius: 6px; padding: 10px;">
+                      <p style="margin: 0; color: #c53030;"><strong>Motivo de rechazo:</strong> {{ payment.rejection_reason }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div *ngIf="commissionSuccess" class="empty-box" style="margin-top: 12px; border-color: #38a169; color: #276749;">
+            {{ commissionSuccess }}
+          </div>
+          <div *ngIf="commissionError" class="error-box" style="margin-top: 12px;">
+            {{ commissionError }}
+          </div>
+        </div>
       </section>
     </ng-container>
 
   </main>
+</div>
+
+<!-- Modal para pagar comisión -->
+<div class="modal-overlay" *ngIf="showCommissionPaymentModal" (click)="closeCommissionPaymentModal()">
+  <div class="modal-content" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2>Pagar Comisión a la Plataforma</h2>
+      <button class="close-icon" (click)="closeCommissionPaymentModal()" [disabled]="isCreatingCommissionPayment || isUploadingCommissionProof">×</button>
+    </div>
+
+    <div class="modal-body">
+      <div *ngIf="commissionSummary" style="background: #f7fafc; border: 1px solid #cbd5e0; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+        <h3 style="margin: 0 0 12px 0;">Monto a Pagar</h3>
+        <p style="margin: 0; font-size: 24px; font-weight: 600; color: #e53e3e;">
+          Bs. {{ commissionSummary.pending_commission | number:'1.2-2' }}
+        </p>
+      </div>
+
+      <div *ngIf="platformQrUrl" style="margin-bottom: 16px;">
+        <h3 style="margin: 0 0 12px 0;">Código QR de la Plataforma</h3>
+        <p style="margin: 0 0 12px 0; color: #4a5568;">Escanea este QR para realizar el pago:</p>
+        <div style="display: flex; justify-content: center;">
+          <img
+            [src]="getPlatformQrDisplayUrl()"
+            alt="QR de la Plataforma"
+            style="max-width: 300px; border: 1px solid #cbd5e0; border-radius: 8px;"
+          />
+        </div>
+      </div>
+
+      <div *ngIf="!createdCommissionPaymentId" style="margin-top: 16px;">
+        <button
+          class="btn-primary"
+          (click)="createCommissionPayment()"
+          [disabled]="isCreatingCommissionPayment"
+        >
+          {{ isCreatingCommissionPayment ? 'Creando pago...' : 'Confirmar que realizaré el pago' }}
+        </button>
+      </div>
+
+      <div *ngIf="createdCommissionPaymentId" style="margin-top: 16px;">
+        <h3 style="margin: 0 0 12px 0;">Subir Comprobante de Pago</h3>
+        <p style="margin: 0 0 12px 0; color: #4a5568;">Sube una foto o captura del comprobante de pago:</p>
+        
+        <div style="display: grid; gap: 12px;">
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/jpg"
+            (change)="onCommissionProofFileSelected($event)"
+            [disabled]="isUploadingCommissionProof"
+          />
+          
+          <button
+            class="btn-primary"
+            (click)="uploadCommissionProof()"
+            [disabled]="isUploadingCommissionProof || !selectedCommissionProofFile"
+          >
+            {{ isUploadingCommissionProof ? 'Subiendo comprobante...' : 'Subir Comprobante' }}
+          </button>
+        </div>
+      </div>
+
+      <div *ngIf="commissionSuccess" class="empty-box" style="margin-top: 12px; border-color: #38a169; color: #276749;">
+        {{ commissionSuccess }}
+      </div>
+      <div *ngIf="commissionError" class="error-box" style="margin-top: 12px;">
+        {{ commissionError }}
+      </div>
+    </div>
+
+    <div class="modal-footer" style="justify-content: flex-end;">
+      <button class="btn-secondary" (click)="closeCommissionPaymentModal()" [disabled]="isCreatingCommissionPayment || isUploadingCommissionProof">
+        Cerrar
+      </button>
+    </div>
+  </div>
 </div>
 
 <!-- Modal para ver el detalle de la solicitud y asignar el servicio -->

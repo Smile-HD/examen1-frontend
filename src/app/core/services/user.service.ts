@@ -24,4 +24,11 @@ export class UserService {
   listUsers(): Observable<AdminUserDto[]> {
     return this.http.get<AdminUserDto[]>(this.baseUrl, { headers: this.getHeaders() });
   }
+
+  deleteUser(userId: number): Observable<{ message: string; user_id: number }> {
+    return this.http.delete<{ message: string; user_id: number }>(
+      `${this.baseUrl}/${userId}`,
+      { headers: this.getHeaders() }
+    );
+  }
 }

@@ -76,6 +76,7 @@ export interface PaymentListResponse {
 export interface PaymentWorkshopSummaryItemResponse {
   taller_id: number;
   taller_name: string;
+  taller_estado: string;  // Estado del taller: activo/inactivo
   total_payments: number;
   confirmed_payments: number;
   pending_payments: number;
@@ -101,12 +102,63 @@ export interface PaymentAdminSummaryResponse {
   payments: PaymentListItemResponse[];
 }
 
+export interface WorkshopCommissionSummaryResponse {
+  taller_id: number;
+  taller_name: string;
+  pending_commission: number;
+  qr_image_url: string | null;
+  qr_image_url_absolute: string | null;
+}
+
+export interface CommissionPaymentCreateRequest {
+  amount: number;
+}
+
+export interface CommissionPaymentCreateResponse {
+  payment_id: number;
+  taller_id: number;
+  amount: number;
+  status: string;
+  qr_image_url: string | null;
+  qr_image_url_absolute: string | null;
+  created_at: string;
+  message: string;
+}
+
+export interface CommissionPaymentListItemResponse {
+  payment_id: number;
+  taller_id: number;
+  taller_name: string;
+  amount: number;
+  status: string;
+  proof_image_url: string | null;
+  proof_image_url_absolute: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+  confirmed_at: string | null;
+}
+
+export interface CommissionPaymentListResponse {
+  total: number;
+  payments: CommissionPaymentListItemResponse[];
+}
+
+export interface CommissionPaymentConfirmRequest {
+  payment_id: number;
+}
+
+export interface CommissionPaymentRejectRequest {
+  payment_id: number;
+  reason?: string | null;
+}
+
 @Injectable({
   providedIn: 'root'
 })
 export class PaymentService {
   private http = inject(HttpClient);
   private paymentsUrl = `${environment.apiUrl}/payments`;
+  private commissionsUrl = `${environment.apiUrl}/commissions`;
 
   private getHeaders(): HttpHeaders {
     const token = localStorage.getItem('access_token');
@@ -117,6 +169,23 @@ export class PaymentService {
 
   createPayment(payload: PaymentCreateRequest): Observable<PaymentCreateResponse> {
     return this.http.post<PaymentCreateResponse>(`${this.paymentsUrl}/create`, payload, { headers: this.getHeaders() });
+  }
+
+  uploadPaymentProof(paymentId: number, file: File): Observable<any> {
+    const formData = new FormData();
+    formData.append('payment_id', paymentId.toString());
+    formData.append('file', file);
+    
+    const token = localStorage.getItem('access_token');
+    const headers = new HttpHeaders({
+      'Authorization': `Bearer ${token}`
+    });
+    
+    return this.http.post(`${this.paymentsUrl}/upload-proof`, formData, { headers });
+  }
+
+  getClientPayments(): Observable<PaymentListResponse> {
+    return this.http.get<PaymentListResponse>(`${this.paymentsUrl}/client`, { headers: this.getHeaders() });
   }
 
   getWorkshopPayments(): Observable<PaymentListResponse> {
@@ -133,6 +202,85 @@ export class PaymentService {
 
   getAdminSummary(): Observable<PaymentAdminSummaryResponse> {
     return this.http.get<PaymentAdminSummaryResponse>(`${this.paymentsUrl}/admin/summary`, { headers: this.getHeaders() });
+  }
+
+  updateWorkshopStatus(tallerId: number, estado: string): Observable<{ message: string; taller_id: number; estado: string }> {
+    return this.http.put<{ message: string; taller_id: number; estado: string }>(
+      `${this.paymentsUrl}/admin/workshop/${tallerId}/status?estado=${estado}`,
+      {},
+      { headers: this.getHeaders() }
+    );
+  }
+
+  // Commission methods
+  uploadPlatformQr(file: File): Observable<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const token = localStorage.getItem('access_token');
+    const headers = new HttpHeaders({
+      'Authorization': `Bearer ${token}`
+    });
+    
+    return this.http.post(`${this.commissionsUrl}/admin/platform-qr-upload`, formData, { headers });
+  }
+
+  getWorkshopCommissionSummary(): Observable<WorkshopCommissionSummaryResponse> {
+    return this.http.get<WorkshopCommissionSummaryResponse>(
+      `${this.commissionsUrl}/workshop/summary`,
+      { headers: this.getHeaders() }
+    );
+  }
+
+  createCommissionPayment(payload: CommissionPaymentCreateRequest): Observable<CommissionPaymentCreateResponse> {
+    return this.http.post<CommissionPaymentCreateResponse>(
+      `${this.commissionsUrl}/workshop/create`,
+      payload,
+      { headers: this.getHeaders() }
+    );
+  }
+
+  uploadCommissionProof(paymentId: number, file: File): Observable<any> {
+    const formData = new FormData();
+    formData.append('payment_id', paymentId.toString());
+    formData.append('file', file);
+    
+    const token = localStorage.getItem('access_token');
+    const headers = new HttpHeaders({
+      'Authorization': `Bearer ${token}`
+    });
+    
+    return this.http.post(`${this.commissionsUrl}/workshop/upload-proof`, formData, { headers });
+  }
+
+  getWorkshopCommissionPayments(): Observable<CommissionPaymentListResponse> {
+    return this.http.get<CommissionPaymentListResponse>(
+      `${this.commissionsUrl}/workshop/payments`,
+      { headers: this.getHeaders() }
+    );
+  }
+
+  getAllCommissionPayments(): Observable<CommissionPaymentListResponse> {
+    return this.http.get<CommissionPaymentListResponse>(
+      `${this.commissionsUrl}/admin/payments`,
+      { headers: this.getHeaders() }
+    );
+  }
+
+  confirmCommissionPayment(payload: CommissionPaymentConfirmRequest): Observable<any> {
+    return this.http.post(
+      `${this.commissionsUrl}/admin/confirm`,
+      payload,
+      { headers: this.getHeaders() }
+    );
+  }
+
+  rejectCommissionPayment(payload: CommissionPaymentRejectRequest): Observable<any> {
+    return this.http.post(
+      `${this.commissionsUrl}/admin/reject`,
+      payload,
+      { headers: this.getHeaders() }
+    );
   }
 
   getAbsoluteUrl(rawUrl: string | null): string {
